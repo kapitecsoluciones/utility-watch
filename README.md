@@ -48,7 +48,7 @@ The first MVP should prove the whole pattern with a small surface:
 - Minimal review/export workflow
 - A demo path that works without private credentials
 
-See [PLAN.md](./PLAN.md) for the build plan.
+See [PLAN.md](./PLAN.md) for the build plan and [Platform Architecture](./docs/platform-architecture.md) for the extension model that should guide implementation.
 
 ## MVP Demo Flow
 
@@ -71,6 +71,8 @@ The demo should prove the provider lifecycle, not broad utility coverage.
 
 - Keep the core stable and provider-agnostic.
 - Keep portal-specific behavior inside plugins.
+- Treat provider plugins as lifecycle-managed extensions, not loose scripts.
+- Route extension behavior through typed events, permissions, and adapter interfaces.
 - Keep Bright Data behind an adapter boundary.
 - Keep raw artifacts private by default.
 - Keep public fixtures synthetic or sanitized.

@@ -1326,6 +1326,7 @@ Required docs before MVP demo:
 
 - `README.md`: clone-to-demo path and project overview.
 - `PLAN.md`: product and implementation plan.
+- `docs/platform-architecture.md`: core, plugin lifecycle, registry, hooks/events, permissions, and adapter architecture.
 - `docs/public-private-boundary.md`: what can and cannot be public.
 - `docs/provider-submission-checklist.md`: provider quality gate.
 - `docs/plugin-contract.md`: manifest and lifecycle reference.
