@@ -521,7 +521,309 @@ Recommended states:
 
 Plugins can report progress, but core decides state transitions.
 
-## 15. Artifact Strategy
+## 15. Installation Model
+
+The installation model should feel like installing a small operating system for bill retrieval, not like copying scripts to a server.
+
+Installation should create four clean boundaries:
+
+1. Application code
+   - Core runtime.
+   - CLI.
+   - API service.
+   - Admin UI when it exists.
+   - Installed plugin packages.
+2. Runtime configuration
+   - Database connection.
+   - Artifact storage path or bucket.
+   - Adapter settings.
+   - Retention policy.
+   - Security policy.
+3. Private secrets
+   - Provider credentials.
+   - Bright Data credentials.
+   - Export credentials.
+   - Encryption keys.
+4. Operational data
+   - Accounts.
+   - Jobs.
+   - Runs.
+   - Artifacts.
+   - Reviews.
+   - Exports.
+
+The MVP installation should be Docker Compose first:
+
+- MySQL.
+- Core API.
+- CLI container or local CLI.
+- Artifact volume.
+- Optional Bright Data configuration through environment variables.
+
+Required install-time checks:
+
+- Database reachable.
+- Migrations current.
+- Artifact storage writable.
+- Encryption key configured.
+- No default admin password.
+- No production mode without configured secret backend.
+- Bright Data disabled unless explicitly configured.
+
+## 16. User, Role, And Capability Model
+
+Users and roles are platform-level concepts. Provider plugins should not own user authorization.
+
+Recommended roles:
+
+- Owner: full system administration, plugin installation, security policy, adapter budget policy, and user management.
+- Administrator: provider configuration, account management, job scheduling, and plugin activation where policy allows it.
+- Operator: run jobs, inspect failures, retry jobs, and collect evidence.
+- Reviewer: approve or reject normalized bills, request reruns, and annotate evidence.
+- Developer: validate plugins, run fixtures, inspect technical logs, and develop provider packages without default access to live secrets.
+- Auditor: read-only access to approved bills, run history, artifacts, and export records.
+
+Authorization should be capability-based internally, even if the UI shows friendly roles.
+
+Example capabilities:
+
+- users.manage
+- plugins.install
+- plugins.activate
+- plugins.update
+- plugins.deactivate
+- providers.configure
+- accounts.create
+- accounts.view
+- accounts.update
+- secrets.reference
+- secrets.rotate
+- jobs.schedule
+- runs.start
+- runs.retry
+- runs.cancel
+- artifacts.view
+- bills.review
+- bills.approve
+- exports.create
+- audit.view
+- policies.manage
+
+Critical rule: plugin code must never decide whether a user is allowed to do something. The core checks authorization before plugin execution, artifact access, review approval, and export.
+
+## 17. Configuration Hierarchy
+
+Configuration should be explicit and layered so operators know where a behavior came from.
+
+Recommended hierarchy, highest priority last:
+
+1. Core defaults.
+2. Environment config.
+3. System policy.
+4. Provider policy.
+5. Account config.
+6. Run overrides.
+
+Examples:
+
+- Bright Data is globally disabled by default.
+- A provider can declare Bright Data as optional.
+- A deployment owner can allow Bright Data for selected providers.
+- An account can remain local-only even if the provider allows escalation.
+- A single run can request escalation only if all higher policies allow it.
+
+Configuration values should be inspectable. A run record should show the resolved effective config that mattered for that run, redacted where necessary.
+
+## 18. Plugin Package Anatomy
+
+A plugin should be a package with predictable files.
+
+Recommended layout:
+
+~~~txt
+provider-sce-us/
+  plugin.json
+  README.md
+  CHANGELOG.md
+  LICENSE
+  src/
+    index.ts
+    parser.ts
+    flow.ts
+  fixtures/
+    sample-bill.html
+    sample-bill.pdf.txt
+    expected-bill.json
+  tests/
+    parser.test.ts
+    manifest.test.ts
+  docs/
+    limitations.md
+    troubleshooting.md
+~~~
+
+Required package expectations:
+
+- plugin.json declares identity, compatibility, capabilities, permissions, auth, adapter support, and quality status.
+- README explains what the plugin supports and does not support.
+- Fixtures are synthetic or sanitized.
+- Tests can run without live credentials.
+- Limitations are explicit.
+- Troubleshooting describes known portal failure modes.
+
+The platform should treat plugin code as replaceable. Historical runs must store plugin ID and version so old results remain explainable after updates.
+
+## 19. Plugin Lifecycle Data
+
+Lifecycle events should produce records, not just logs.
+
+Suggested records:
+
+- plugin_discoveries
+- plugin_installs
+- plugin_activations
+- plugin_updates
+- plugin_deactivations
+- plugin_uninstalls
+- plugin_policy_decisions
+- plugin_health_checks
+
+Each record should include plugin ID, version, actor, timestamp, decision, policy result, warnings, checksum when available, and compatibility result.
+
+This matters because plugin platforms fail operationally when nobody knows what changed before a provider started failing.
+
+## 20. Security Architecture
+
+Security should be part of the platform model, not an afterthought.
+
+Security boundaries:
+
+- Public registry metadata is not trusted execution.
+- Plugin manifest is data, not proof of safety.
+- Plugin code is less trusted than core.
+- Customer credentials are more sensitive than plugin config.
+- Artifacts may contain regulated or confidential business information.
+- Logs must be treated as possible data leaks.
+
+Required security controls:
+
+- Secret references instead of raw secrets in account config.
+- Encryption at rest for secret-backed configuration.
+- Strict log redaction.
+- Domain allowlists per plugin.
+- Adapter credentials never passed directly to plugin code.
+- Artifact access controlled by core authorization.
+- Retention policies for screenshots, HTML, PDFs, and debug traces.
+- Dependency and secret scanning in CI.
+- Explicit export permission.
+- Audit trail for approval and export.
+
+Threats to design against:
+
+- Malicious plugin exfiltrates credentials.
+- Careless plugin logs secrets or account numbers.
+- Plugin accesses undeclared domains.
+- Portal HTML artifact leaks private customer data into public issue reports.
+- Operator installs an outdated plugin with known breakage.
+- Bright Data usage runs uncontrolled cost.
+- Normalized output is exported without review after low-confidence extraction.
+
+The MVP can start with process-level isolation later, but the contracts should already express permissions, domains, artifacts, secrets, and adapter access.
+
+## 21. Admin UI Concept
+
+The first implementation can be CLI-first, but the architecture should anticipate an admin UI.
+
+Primary admin areas:
+
+- Dashboard: provider health, recent runs, bills needing review, failed providers, and adapter usage.
+- Provider Registry: browse available providers, inspect capabilities, install or activate, see quality and limitations.
+- Accounts: configure provider accounts, attach secret references, test connectivity, schedule retrieval.
+- Runs: timeline, logs, artifacts, adapter selected, policy decisions, failure reason.
+- Review Queue: normalized fields, evidence viewer, confidence, approve, reject, rerun.
+- Settings: users, roles, security policy, retention, Bright Data budgets, export targets.
+
+The key UX rule: a non-developer operator should be able to answer three questions quickly:
+
+1. What happened?
+2. Can I trust the extracted bill?
+3. What do I do next?
+
+## 22. Publishing And Governance
+
+The registry should eventually behave like a trust layer for extensions.
+
+Provider publishing states:
+
+- draft
+- submitted
+- review_required
+- experimental
+- verified
+- degraded
+- deprecated
+- removed
+
+Submission checklist:
+
+- Manifest valid.
+- Package layout valid.
+- License present.
+- No secrets found.
+- Fixtures included.
+- Tests pass.
+- Permissions are minimal.
+- Domains are justified.
+- Limitations documented.
+- Maintainer identified.
+- Adapter needs declared.
+- Bright Data usage reason documented if applicable.
+
+Governance should optimize for trust, not plugin count. A small number of honest, well-tested providers is better than a large registry of brittle packages.
+
+## 23. Extension Points To Preserve
+
+The platform should preserve extension points in predictable places.
+
+Important extension points:
+
+- Provider discovery.
+- Authentication flow.
+- Account discovery.
+- Bill listing.
+- Bill download.
+- Artifact capture.
+- Parser and normalization.
+- Confidence scoring.
+- Failure classification.
+- Retry policy.
+- Adapter selection.
+- Export mapping.
+- Review policy.
+- Notifications.
+
+Each extension point should have typed input, typed output, timeout, error type, logging rules, permission scope, and test fixture expectations.
+
+## 24. Architecture Decisions Before Coding
+
+Before implementing the core, decide:
+
+- Whether plugins run in-process for MVP or in worker processes from day one.
+- Whether the first admin experience is CLI-only or includes a minimal web report.
+- Whether secrets are local encrypted records or references to an external vault in MVP.
+- Whether plugin packages are local folders only or installable npm packages in MVP.
+- Whether registry entries live only in repo JSON or are served by a small API.
+- Whether the demo uses a real portal, a mock portal, or both.
+
+Recommended MVP choices:
+
+- In-process plugins with a permission contract documented now and worker isolation later.
+- CLI plus static run report.
+- Local encrypted secret references for development, external vault path documented.
+- Local folder plugins plus registry JSON.
+- Mock portal as the reliable demo, Bright Data flow as the escalation demo.
+
+## 25. Artifact Strategy
 
 Artifacts provide evidence and debugging context.
 
@@ -544,7 +846,7 @@ Artifact rules:
 - Private artifacts never enter the public repo.
 - Retention policy should be explicit.
 
-## 16. Update And Compatibility Strategy
+## 26. Update And Compatibility Strategy
 
 Provider portals change often. Plugin update design is not optional.
 
@@ -570,7 +872,7 @@ Rollback requirements:
 - Allow deactivation of broken plugin version.
 - Allow pinning accounts to known working plugin version later.
 
-## 17. MVP Architecture Decisions
+## 27. MVP Architecture Decisions
 
 Recommended MVP decisions:
 
@@ -586,7 +888,7 @@ Recommended MVP decisions:
 - No payments, ratings, or hosted marketplace in MVP.
 - No private provider code copied into the public repo.
 
-## 18. MVP Slice
+## 28. MVP Slice
 
 The smallest credible MVP is:
 
@@ -603,7 +905,7 @@ The smallest credible MVP is:
 
 This proves the platform pattern without pretending to support many utilities on day one.
 
-## 19. Design Risks
+## 29. Design Risks
 
 ### Over-abstracting Too Early
 
@@ -635,7 +937,7 @@ Risk: platform becomes a Bright Data wrapper.
 
 Mitigation: adapter interface and local-first execution policy.
 
-## 20. Implementation Rule
+## 30. Implementation Rule
 
 Every MVP feature should answer one of these questions:
 
