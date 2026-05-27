@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "0.1.0",
+  "providers": [
+    {
+      "id": "example-provider",
+      "name": "Example Utility Provider",
+      "country": "US",
+      "utilityTypes": ["electricity"],
+      "status": "draft",
+      "verification": "fixture-only",
+      "package": "plugins/example-provider"
+    }
+  ]
+}
+

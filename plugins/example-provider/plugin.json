@@ -1,0 +1,26 @@
+{
+  "id": "example-provider",
+  "name": "Example Utility Provider",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "country": "US",
+  "utilityTypes": ["electricity"],
+  "runtime": ["playwright"],
+  "domains": ["example.com"],
+  "secrets": ["username", "password"],
+  "capabilities": ["login", "listAccounts", "downloadBill", "normalizeBill"],
+  "permissions": {
+    "network": ["https://example.com"],
+    "filesystem": ["artifacts:write"],
+    "brightData": false
+  },
+  "tests": {
+    "fixtures": "./fixtures",
+    "healthcheck": "npm run test:plugin"
+  },
+  "support": {
+    "maintainer": "Kapitec",
+    "url": "https://github.com/kapitecsoluciones/utility-watch/issues"
+  }
+}
+
