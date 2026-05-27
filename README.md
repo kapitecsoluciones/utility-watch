@@ -48,7 +48,7 @@ The first MVP should prove the whole pattern with a small surface:
 - Minimal review/export workflow
 - A demo path that works without private credentials
 
-See [PLAN.md](./PLAN.md) for the build plan, [Platform Architecture](./docs/platform-architecture.md) for the extension model, and [AI-Assisted Improvement Model](./docs/ai-assisted-improvement.md) for the optional intelligence layer.
+See [PLAN.md](./PLAN.md) for the build plan, [Platform Architecture](./docs/platform-architecture.md) for the extension model, [Plugin Contract](./docs/plugin-contract.md) for provider package rules, [Bright Data Policy](./docs/bright-data-policy.md) for escalation boundaries, [Demo Script](./docs/demo-script.md) for the first public walkthrough, and [AI-Assisted Improvement Model](./docs/ai-assisted-improvement.md) for the optional intelligence layer.
 
 ## MVP Demo Flow
 

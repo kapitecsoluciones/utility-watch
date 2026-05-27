@@ -1,15 +1,29 @@
 {
-  "schemaVersion": "0.1.0",
+  "schemaVersion": "uw-registry-v1",
   "providers": [
     {
       "id": "example-provider",
       "name": "Example Utility Provider",
       "country": "US",
-      "utilityTypes": ["electricity"],
+      "serviceTypes": ["electricity"],
       "status": "draft",
       "verification": "fixture-only",
-      "package": "plugins/example-provider"
+      "package": "plugins/example-provider",
+      "pluginVersion": "0.1.0",
+      "coreVersion": ">=0.1.0 <1.0.0",
+      "brightData": "unsupported",
+      "capabilities": [
+        "auth.login",
+        "accounts.list",
+        "bills.list",
+        "bills.download",
+        "bills.normalize"
+      ],
+      "knownLimitations": [
+        "Synthetic example only",
+        "Not connected to a live provider portal"
+      ],
+      "maintainer": "Utility Watch Maintainers"
     }
   ]
 }
-
