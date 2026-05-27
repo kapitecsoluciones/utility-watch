@@ -902,7 +902,7 @@ Status: mostly complete.
 - [x] Add PLAN.md.
 - [x] Add plugin manifest example.
 - [x] Add public/private boundary documentation.
-- [ ] Add `CLAUDE.md` or equivalent project instructions for coding agents.
+- [x] Add `CLAUDE.md` or equivalent project instructions for coding agents.
 - [ ] Add issue templates.
 - [ ] Add pull request template.
 

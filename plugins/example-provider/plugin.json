@@ -3,16 +3,37 @@
   "name": "Example Utility Provider",
   "version": "0.1.0",
   "license": "Apache-2.0",
+  "schemaVersion": "uw-plugin-v1",
+  "coreVersion": ">=0.1.0 <1.0.0",
   "country": "US",
-  "utilityTypes": ["electricity"],
-  "runtime": ["playwright"],
-  "domains": ["example.com"],
-  "secrets": ["username", "password"],
-  "capabilities": ["login", "listAccounts", "downloadBill", "normalizeBill"],
+  "serviceTypes": ["electricity"],
+  "homepage": "https://example.com",
+  "entrypoint": "./dist/index.js",
+  "capabilities": [
+    "auth.login",
+    "accounts.list",
+    "bills.list",
+    "bills.download",
+    "bills.normalize"
+  ],
+  "auth": {
+    "type": "username-password",
+    "secretRefs": ["username", "password"]
+  },
   "permissions": {
-    "network": ["https://example.com"],
-    "filesystem": ["artifacts:write"],
-    "brightData": false
+    "network": ["example.com", "*.example.com"],
+    "artifacts": ["html", "pdf", "screenshot", "json"],
+    "filesystem": "artifacts-only",
+    "brightData": "unsupported"
+  },
+  "quality": {
+    "status": "draft",
+    "verification": "fixture-only",
+    "lastVerified": null,
+    "limitations": [
+      "Synthetic example only",
+      "Not connected to a live provider portal"
+    ]
   },
   "tests": {
     "fixtures": "./fixtures",
@@ -23,4 +44,3 @@
     "url": "https://github.com/kapitecsoluciones/utility-watch/issues"
   }
 }
-
