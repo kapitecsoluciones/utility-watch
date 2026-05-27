@@ -15,14 +15,14 @@ Utility Watch turns portal-specific knowledge into installable plugins:
 - One registry of providers
 - One normalized bill model
 - One audit trail per run
-- Optional Bright Data execution for blocked or JavaScript-heavy portals
+- A demonstrable Bright Data-backed execution path for blocked or JavaScript-heavy portals
 
 ## Project Goals
 
 - Open-source core under Apache-2.0.
 - Provider plugins that can be published, installed, reviewed, updated, and deprecated independently.
 - MySQL-first deployment for simple VPS installs.
-- Local browser execution by default, Bright Data escalation only when needed.
+- Bright Data integration as a first-class execution adapter for the hackathon demo, with local execution retained as the baseline for providers that do not need web-data escalation.
 - No customer credentials, real bills, or private client logic in the public repo.
 
 ## Early Shape
@@ -44,7 +44,7 @@ The first MVP should prove the whole pattern with a small surface:
 - Run logs and artifacts
 - One mock provider for documentation
 - One normal provider demo path
-- One blocked-provider flow using Bright Data
+- One blocked-provider flow that demonstrably uses Bright Data
 - Minimal review/export workflow
 - A demo path that works without private credentials
 
@@ -63,7 +63,7 @@ The intended first demo is:
 7. Inspect logs and artifacts.
 8. Review the normalized bill.
 9. Export approved JSON.
-10. Run a bounded Bright Data escalation demo.
+10. Run a bounded Bright Data-backed escalation demo and show the adapter decision, policy reason, and run artifacts.
 
 The demo should prove the provider lifecycle, not broad utility coverage.
 
@@ -73,7 +73,7 @@ The demo should prove the provider lifecycle, not broad utility coverage.
 - Keep portal-specific behavior inside plugins.
 - Treat provider plugins as lifecycle-managed extensions, not loose scripts.
 - Route extension behavior through typed events, permissions, and adapter interfaces.
-- Keep Bright Data behind an adapter boundary.
+- Make Bright Data visible in the demo path while keeping it behind a clean adapter boundary.
 - Keep raw artifacts private by default.
 - Keep public fixtures synthetic or sanitized.
 - Keep every run auditable.
