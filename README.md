@@ -42,12 +42,40 @@ The first MVP should prove the whole pattern with a small surface:
 - MySQL schema
 - Plugin manifest validation
 - Run logs and artifacts
-- One normal provider
-- One blocked-provider flow using Bright Data
 - One mock provider for documentation
+- One normal provider demo path
+- One blocked-provider flow using Bright Data
 - Minimal review/export workflow
+- A demo path that works without private credentials
 
 See [PLAN.md](./PLAN.md) for the build plan.
+
+## MVP Demo Flow
+
+The intended first demo is:
+
+1. Start local MySQL.
+2. Run the core health check.
+3. List providers from the registry.
+4. Install or enable a mock provider.
+5. Create a synthetic account.
+6. Run a retrieval job.
+7. Inspect logs and artifacts.
+8. Review the normalized bill.
+9. Export approved JSON.
+10. Run a bounded Bright Data escalation demo.
+
+The demo should prove the provider lifecycle, not broad utility coverage.
+
+## Architecture Principles
+
+- Keep the core stable and provider-agnostic.
+- Keep portal-specific behavior inside plugins.
+- Keep Bright Data behind an adapter boundary.
+- Keep raw artifacts private by default.
+- Keep public fixtures synthetic or sanitized.
+- Keep every run auditable.
+- Keep plugin publishing governed by validation, verification, and known limitations.
 
 ## Public/Private Boundary
 
@@ -57,7 +85,7 @@ It must not contain:
 
 - Customer credentials
 - Real utility bills
-- Private the client-specific logic
+- Private client-specific logic
 - OAuth tokens or API keys
 - Screenshots with customer data
 - Any secrets
@@ -65,4 +93,3 @@ It must not contain:
 ## License
 
 Apache-2.0.
-

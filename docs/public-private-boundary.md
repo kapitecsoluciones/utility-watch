@@ -20,10 +20,9 @@ The public repository must not include:
 - OAuth tokens
 - Bright Data API keys
 - QuickBooks tokens
-- the client-specific private logic
+- Client-specific private logic
 - Client-specific account numbers
 - Portal session cookies
 - Downloaded production artifacts
 
 If a real scraper is converted into a provider plugin, it must be rewritten or sanitized so the public plugin contains only generic portal logic and safe fixtures.
-
