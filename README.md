@@ -48,7 +48,7 @@ The first MVP should prove the whole pattern with a small surface:
 - Minimal review/export workflow
 - A demo path that works without private credentials
 
-See [PLAN.md](./PLAN.md) for the build plan and [Platform Architecture](./docs/platform-architecture.md) for the extension model that should guide implementation.
+See [PLAN.md](./PLAN.md) for the build plan, [Platform Architecture](./docs/platform-architecture.md) for the extension model, and [AI-Assisted Improvement Model](./docs/ai-assisted-improvement.md) for the optional intelligence layer.
 
 ## MVP Demo Flow
 
@@ -78,6 +78,7 @@ The demo should prove the provider lifecycle, not broad utility coverage.
 - Keep public fixtures synthetic or sanitized.
 - Keep every run auditable.
 - Keep plugin publishing governed by validation, verification, and known limitations.
+- Use AI only as an optional maintenance and diagnosis layer, not as the authority for retrieval, security, approval, or export.
 
 ## Public/Private Boundary
 

@@ -1331,6 +1331,7 @@ Required docs before MVP demo:
 - `docs/provider-submission-checklist.md`: provider quality gate.
 - `docs/plugin-contract.md`: manifest and lifecycle reference.
 - `docs/bright-data-policy.md`: adapter, opt-in, budget, and cost rules.
+- `docs/ai-assisted-improvement.md`: diagnosis, maintenance, parser assistance, registry quality, and AI governance.
 - `docs/demo-script.md`: exact hackathon demo steps.
 
 Recommended after MVP:
