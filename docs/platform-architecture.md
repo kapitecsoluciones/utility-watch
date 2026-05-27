@@ -1,0 +1,648 @@
+# Utility Watch Platform Architecture
+
+Utility Watch should be designed as an extension platform, not as a folder of scrapers.
+
+The core idea is simple: the platform owns the stable operating system for bill retrieval, while provider plugins own the unstable, provider-specific knowledge required to interact with individual utility portals.
+
+This document defines the architecture principles that should guide the MVP and prevent the project from becoming a pile of one-off automation scripts.
+
+## 1. Architecture Thesis
+
+Utility Watch has three durable layers:
+
+1. Core runtime
+   - Owns users, accounts, jobs, runs, storage, audit logs, plugin loading, event dispatch, review states, and exports.
+   - Does not contain provider-specific portal logic.
+2. Provider plugins
+   - Own portal-specific behavior: authentication, account discovery, bill retrieval, parsing, evidence capture, and recovery hints.
+   - Declare capabilities and permissions before they can run.
+3. Provider registry
+   - Owns discovery metadata: provider identity, country, service type, supported capabilities, maintenance status, version, quality score, limitations, and install source.
+   - Helps operators decide whether a provider is safe to install and realistic to automate.
+
+The MVP should prove the contract among these layers. It does not need broad provider coverage.
+
+## 2. Core Responsibilities
+
+The core is the trusted platform boundary. It should be boring, stable, and provider-agnostic.
+
+Core responsibilities:
+
+- Load provider metadata from registry entries.
+- Validate plugin manifests before execution.
+- Install and activate plugins.
+- Store account configuration and secret references.
+- Schedule and run retrieval jobs.
+- Dispatch lifecycle events.
+- Select the execution adapter for a run.
+- Persist run records and state transitions.
+- Store artifacts through a controlled artifact interface.
+- Redact logs before persistence.
+- Normalize plugin output into a common bill model.
+- Route low-confidence results to review.
+- Export approved results.
+- Track provider health, failure modes, and maintenance status.
+
+Core non-responsibilities:
+
+- Knowing how to log in to a specific provider portal.
+- Hardcoding provider URLs or selectors.
+- Holding raw credentials in public config.
+- Bypassing captchas or access controls.
+- Embedding customer-specific accounting rules.
+- Guaranteeing full automation for every provider.
+
+## 3. Provider Plugin Responsibilities
+
+A provider plugin is a controlled adapter for one provider portal or provider family.
+
+Plugin responsibilities:
+
+- Declare identity and compatibility.
+- Declare required secrets.
+- Declare required permissions.
+- Declare domains it may access.
+- Declare supported capabilities.
+- Implement provider-specific lifecycle methods.
+- Return structured results, not arbitrary side effects.
+- Capture evidence through the core artifact API.
+- Report clear failure reasons.
+- Provide synthetic fixtures for parser tests.
+- Document limitations and manual fallback paths.
+
+Plugins should not:
+
+- Read arbitrary local files.
+- Write directly to the database.
+- Store credentials.
+- Export data to external systems.
+- Call Bright Data directly unless routed through the core adapter.
+- Modify other plugins.
+- Modify core runtime behavior outside declared hooks.
+
+## 4. Plugin Manifest
+
+Every plugin should ship with a machine-readable manifest. The manifest is the public contract before code runs.
+
+Recommended manifest fields:
+
+~~~json
+{
+  "id": "sce-us",
+  "name": "Southern California Edison",
+  "version": "0.1.0",
+  "coreVersion": ">=0.1.0 <1.0.0",
+  "schemaVersion": "uw-plugin-v1",
+  "country": "US",
+  "serviceTypes": ["electricity"],
+  "homepage": "https://www.sce.com/",
+  "entrypoint": "./dist/index.js",
+  "capabilities": [
+    "auth.login",
+    "accounts.list",
+    "bills.list",
+    "bills.download",
+    "bills.normalize"
+  ],
+  "auth": {
+    "type": "username-password",
+    "secretRefs": ["username", "password"]
+  },
+  "permissions": {
+    "network": ["sce.com", "*.sce.com"],
+    "artifacts": ["pdf", "html", "screenshot"],
+    "brightData": "optional"
+  },
+  "quality": {
+    "status": "experimental",
+    "fixtureCoverage": "parser-only",
+    "lastVerified": null
+  }
+}
+~~~
+
+The core should reject plugins that omit required metadata or request undeclared permissions at runtime.
+
+## 5. Plugin Lifecycle
+
+The platform needs a complete plugin lifecycle from day one, even if the MVP implements only a CLI version.
+
+### Discover
+
+An operator searches or lists available providers from the registry.
+
+Required output:
+
+- Provider name.
+- Country.
+- Service type.
+- Status.
+- Capabilities.
+- Required auth method.
+- Whether Bright Data is required, optional, or unsupported.
+- Known limitations.
+
+### Install
+
+The platform downloads or enables a plugin package.
+
+MVP install can be local-path based. The architecture should still model install as a distinct step.
+
+Install checks:
+
+- Manifest is valid.
+- Package checksum is present when remote install exists.
+- Core version is compatible.
+- Plugin ID does not collide.
+- Declared permissions pass policy.
+
+### Activate
+
+Activation makes the plugin available for account configuration and jobs.
+
+Activation should:
+
+- Register provider capabilities.
+- Register plugin event handlers.
+- Run plugin migrations if allowed.
+- Store activation metadata.
+- Keep activation separate from account credentials.
+
+### Configure
+
+Configuration connects a provider plugin to a customer account or test account.
+
+Configuration should:
+
+- Store account metadata.
+- Store secret references, not secret values.
+- Validate required fields.
+- Optionally run a safe connectivity test.
+- Mark account readiness.
+
+### Run
+
+A run executes one job for one configured account.
+
+The core owns run state. The plugin owns provider-specific behavior inside the allowed execution context.
+
+### Review
+
+Review is required when extraction confidence is low or when policy requires human approval.
+
+Review should show:
+
+- Normalized bill fields.
+- Raw evidence references.
+- Confidence scores.
+- Warnings.
+- Plugin version.
+- Run logs.
+- Failure or recovery hints.
+
+### Update
+
+Plugins change because portals change.
+
+Update checks:
+
+- Version compatibility.
+- Migration availability.
+- Changelog.
+- Test status.
+- Rollback path.
+- Whether active accounts are affected.
+
+### Deactivate
+
+Deactivation disables future jobs without deleting historical records.
+
+Deactivation should:
+
+- Stop scheduled jobs for that provider.
+- Keep runs, artifacts, and reviews.
+- Preserve account configuration unless explicitly archived.
+
+### Uninstall
+
+Uninstall removes plugin code and optionally archived plugin metadata.
+
+Uninstall must not silently delete:
+
+- Historical runs.
+- Audit logs.
+- Approved bill exports.
+- Artifacts needed for audit.
+- Account configuration without an explicit archive/delete policy.
+
+## 6. Hook And Event System
+
+The platform needs an explicit event system so plugins and internal modules can extend behavior without modifying core.
+
+There are two event types:
+
+1. Actions
+   - Fire-and-forget lifecycle notifications.
+   - Used to perform additional work after something happens.
+2. Filters
+   - Transform or validate a value before it moves forward.
+   - Used when the platform expects a returned value.
+
+### Core Lifecycle Events
+
+Recommended action events:
+
+- platform.boot
+- plugin.discovered
+- plugin.installed
+- plugin.activated
+- plugin.deactivated
+- plugin.updated
+- account.configured
+- run.created
+- run.started
+- run.adapter.selected
+- run.completed
+- run.failed
+- bill.normalized
+- bill.review_requested
+- bill.approved
+- bill.rejected
+- export.completed
+
+Recommended filter events:
+
+- provider.manifest.validate
+- account.config.validate
+- run.options.resolve
+- adapter.selection.resolve
+- artifact.metadata.redact
+- log.entry.redact
+- bill.normalized.validate
+- bill.confidence.calculate
+- export.payload.transform
+
+### Event Rules
+
+- Events must be typed.
+- Event handlers must be ordered deterministically.
+- Event handlers must be bounded by timeout.
+- Filter handlers must return typed values.
+- Event failures must be visible in run logs.
+- Plugins can subscribe only to allowed events.
+- Security-sensitive filters should be core-only unless explicitly allowed.
+
+## 7. Execution Adapters
+
+The core should expose execution adapters behind a stable interface.
+
+Recommended adapters:
+
+- local-http: simple HTTP requests for static or API-like portals.
+- local-browser: local browser automation for JavaScript-heavy portals.
+- brightdata-browser: remote browser execution for blocked flows.
+- brightdata-unlocker: HTTP retrieval through Web Unlocker where appropriate.
+- fixture: deterministic test execution without external network calls.
+
+Adapter selection should be policy-driven:
+
+1. Prefer fixture for tests.
+2. Prefer local HTTP when possible.
+3. Use local browser when JavaScript is required.
+4. Escalate to Bright Data only when the provider or account policy allows it.
+5. Stop with a clear failure when automation becomes unsafe, too expensive, or blocked by policy.
+
+## 8. Bright Data Boundary
+
+Bright Data should be an optional platform capability, not a plugin dependency.
+
+Rules:
+
+- Plugins declare whether Bright Data is unsupported, optional, or required.
+- Core selects the Bright Data adapter.
+- Core owns budget limits.
+- Core owns usage logging.
+- Core owns redaction.
+- Plugins receive an adapter abstraction, not raw Bright Data credentials.
+- Runs should fail closed when Bright Data is not configured or budget is exceeded.
+
+Recommended policy controls:
+
+- Per-run max cost.
+- Per-provider monthly budget.
+- Per-account opt-in.
+- Domain allowlist.
+- Artifact retention limits.
+- Debug artifact redaction.
+
+## 9. Registry And Marketplace Model
+
+The registry is the trust and discovery layer.
+
+MVP registry can be JSON in the repo. Later it can become a hosted service.
+
+Registry fields should include:
+
+- Provider ID.
+- Provider name.
+- Country.
+- Region.
+- Service type.
+- Homepage.
+- Plugin package source.
+- Latest version.
+- Core compatibility.
+- Auth method.
+- Capabilities.
+- Execution adapters supported.
+- Bright Data requirement.
+- Maintenance status.
+- Last verified date.
+- Known limitations.
+- Required review level.
+- Quality gate status.
+- Support channel or maintainer.
+
+Marketplace features to model but not build in MVP:
+
+- Ratings.
+- Usage counts.
+- Paid plugins.
+- Revenue share.
+- Maintainer profiles.
+- Private provider listings.
+- Hosted update service.
+
+MVP should focus on trust metadata and installability, not monetization.
+
+## 10. Quality Gates
+
+Plugins should pass checks before they become visible as recommended providers.
+
+Minimum gates:
+
+- Manifest schema validation.
+- Unique plugin ID.
+- License present.
+- No obvious secrets in repo.
+- Declared domains only.
+- Declared permissions only.
+- Synthetic fixtures included.
+- Parser tests included.
+- Readme included.
+- Limitations documented.
+- Failure taxonomy mapped.
+- Artifact types declared.
+- No private customer data in fixtures.
+
+Recommended gates after MVP:
+
+- Static analysis.
+- Dependency audit.
+- Network call instrumentation.
+- Sandbox compatibility.
+- Browser flow recording review.
+- Maintainer verification.
+- Signed releases.
+
+## 11. Permission And Sandbox Model
+
+Provider plugins handle sensitive workflows. Permissions should be explicit.
+
+Permission categories:
+
+- Network domains.
+- Secret references.
+- Artifact types.
+- Browser access.
+- Bright Data access.
+- Filesystem access.
+- Hook subscriptions.
+- Export access.
+
+Default posture:
+
+- Deny undeclared network domains.
+- Deny undeclared secret access.
+- Deny arbitrary filesystem writes.
+- Deny direct database writes.
+- Deny export access from plugins.
+- Deny raw Bright Data credentials.
+
+The MVP may run plugins in-process for speed, but the architecture should preserve a path to stronger isolation.
+
+Future isolation options:
+
+- Worker processes.
+- Containerized plugin runs.
+- Restricted browser contexts.
+- Signed plugin packages.
+- Policy engine for runtime permissions.
+
+## 12. Data Model Boundaries
+
+Utility Watch has three data classes:
+
+1. Public metadata
+   - Provider names.
+   - Plugin metadata.
+   - Synthetic fixtures.
+   - Docs.
+2. Operational metadata
+   - Run IDs.
+   - Job states.
+   - Plugin versions.
+   - Adapter used.
+   - Failure categories.
+3. Private customer data
+   - Credentials.
+   - Account numbers.
+   - Bills.
+   - Addresses.
+   - Screenshots.
+   - PDFs.
+   - Portal HTML.
+
+Public repo content must stay in class 1.
+
+Runtime systems may handle classes 2 and 3, but must redact logs and isolate artifacts.
+
+## 13. Admin And Operator UX
+
+The platform should eventually support both CLI and web admin flows.
+
+MVP CLI flows:
+
+- utility-watch doctor
+- utility-watch providers:list
+- utility-watch providers:show <provider>
+- utility-watch plugins:validate <path>
+- utility-watch accounts:create
+- utility-watch runs:start
+- utility-watch runs:show
+- utility-watch bills:review
+- utility-watch export:json
+
+Future admin flows:
+
+- Browse provider registry.
+- Install provider.
+- Configure account.
+- Test credentials.
+- Schedule retrieval.
+- Inspect run timeline.
+- Review normalized bill.
+- Approve or reject bill.
+- Export approved bill.
+- Update provider plugin.
+- See provider health and last successful run.
+
+The core UX principle: an operator should not need to read plugin code to understand what happened.
+
+## 14. Run State Machine
+
+The run state machine should be controlled by core.
+
+Recommended states:
+
+- queued
+- starting
+- authenticating
+- discovering_accounts
+- retrieving
+- capturing_artifacts
+- normalizing
+- validating
+- needs_review
+- approved
+- exported
+- failed
+- cancelled
+
+Plugins can report progress, but core decides state transitions.
+
+## 15. Artifact Strategy
+
+Artifacts provide evidence and debugging context.
+
+Artifact types:
+
+- PDF.
+- HTML snapshot.
+- Screenshot.
+- JSON response.
+- Parsed text.
+- Normalized bill JSON.
+- Redacted run report.
+
+Artifact rules:
+
+- Artifacts are stored through core.
+- Artifacts are linked to run IDs.
+- Artifacts include redaction metadata.
+- Public demos use synthetic artifacts.
+- Private artifacts never enter the public repo.
+- Retention policy should be explicit.
+
+## 16. Update And Compatibility Strategy
+
+Provider portals change often. Plugin update design is not optional.
+
+Versioning rules:
+
+- Core follows semantic versioning.
+- Plugins declare compatible core ranges.
+- Manifests declare schema version.
+- Registry declares latest version and deprecation status.
+- Updates should include changelog entries.
+
+Compatibility checks:
+
+- Core rejects incompatible plugins.
+- Plugin updates should not erase historical run readability.
+- Plugin version used for each run must be recorded.
+- Normalized bill schema version must be recorded.
+
+Rollback requirements:
+
+- Keep previous plugin version metadata.
+- Preserve run artifacts.
+- Allow deactivation of broken plugin version.
+- Allow pinning accounts to known working plugin version later.
+
+## 17. MVP Architecture Decisions
+
+Recommended MVP decisions:
+
+- Node.js and TypeScript.
+- MySQL as the primary database.
+- File-based artifact storage.
+- JSON registry in repo.
+- Local plugin loading from repository path.
+- In-process plugin execution with strict manifest validation.
+- CLI-first operator experience.
+- Synthetic fixtures for all public demos.
+- Bright Data adapter behind env flag and explicit account/provider opt-in.
+- No payments, ratings, or hosted marketplace in MVP.
+- No private provider code copied into the public repo.
+
+## 18. MVP Slice
+
+The smallest credible MVP is:
+
+1. Core package with typed models.
+2. Manifest schema and validator.
+3. Registry loader and validator.
+4. Mock provider plugin.
+5. Fixture adapter.
+6. Run state machine.
+7. Artifact writer.
+8. Normalized bill validator.
+9. Review/export JSON flow.
+10. Bright Data adapter interface with a bounded demo path.
+
+This proves the platform pattern without pretending to support many utilities on day one.
+
+## 19. Design Risks
+
+### Over-abstracting Too Early
+
+Risk: designing for every provider before one complete flow works.
+
+Mitigation: keep the first plugin contract small and evolve only after real runs expose repeated needs.
+
+### Under-abstracting Into Scripts
+
+Risk: implementing provider scripts directly and losing the platform.
+
+Mitigation: force every provider through the manifest, registry, run state, artifact, and normalized bill interfaces.
+
+### Unsafe Plugin Power
+
+Risk: plugins become arbitrary code with access to secrets and storage.
+
+Mitigation: manifest permissions, adapter boundaries, redaction, and future process isolation.
+
+### Marketplace Without Trust
+
+Risk: registry becomes a list of unverified scripts.
+
+Mitigation: quality gates, maintenance status, known limitations, and clear support metadata.
+
+### Bright Data Lock-In
+
+Risk: platform becomes a Bright Data wrapper.
+
+Mitigation: adapter interface and local-first execution policy.
+
+## 20. Implementation Rule
+
+Every MVP feature should answer one of these questions:
+
+- Does it make provider plugins safer to install?
+- Does it make runs easier to audit?
+- Does it keep private data out of the public repo?
+- Does it make provider behavior easier to update?
+- Does it prove a complete install-to-export lifecycle?
+
+If not, it probably belongs after MVP.
