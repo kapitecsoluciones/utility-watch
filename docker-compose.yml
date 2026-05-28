@@ -19,5 +19,20 @@ services:
       timeout: 5s
       retries: 20
 
+  app:
+    build: .
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-utility_watch}:${MYSQL_PASSWORD:-utility_watch}@mysql:3306/${MYSQL_DATABASE:-utility_watch}
+      ARTIFACTS_DIR: /app/data/artifacts
+      EXPORTS_DIR: /app/data/exports
+      LOG_LEVEL: info
+      BRIGHTDATA_ENABLED: "false"
+    volumes:
+      - utility_watch_data:/app/data
+
 volumes:
   utility_watch_mysql:
+  utility_watch_data:
