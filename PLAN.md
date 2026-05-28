@@ -266,6 +266,95 @@ The platform should support three installation shapes over time, but the MVP sho
 
 The MVP should not pretend to be production-hosted. It should prove that the install path, config model, plugin lifecycle, and audit trail are coherent.
 
+### First-Run Installation Experience
+
+The installation story must be explicit enough that a developer, coding agent, or infrastructure operator can start from an empty container or VPS and reach a working admin session without private context.
+
+Target first-run path:
+
+1. Provision a Linux container, VPS, or local machine with Docker available.
+2. Clone the public repository.
+3. Copy `.env.example` to `.env`.
+4. Run `docker compose up -d mysql`.
+5. Run `utility-watch setup` or `npm run setup`.
+6. The setup command validates Node, package manager, database connectivity, writable artifact storage, and registry files.
+7. Run migrations.
+8. Start the API/dashboard process.
+9. Open the local setup URL.
+10. Complete the first-use wizard.
+11. Create the first administrator account.
+12. Confirm baseline security settings.
+13. Install or activate the mock provider.
+14. Create a synthetic account.
+15. Run the demo job.
+
+This should feel like a normal product installation, not like manually wiring scripts together. The first-use wizard can be minimal in the MVP, but the architecture must reserve the states and data model for it.
+
+### Setup Wizard v0
+
+The setup wizard should be the guided path for non-core contributors and first-time operators.
+
+Wizard steps:
+
+1. **Environment check**
+   - database reachable
+   - migrations pending/applied
+   - artifact path writable
+   - app URL configured
+   - registry file readable
+   - Bright Data disabled or configured intentionally
+
+2. **System profile**
+   - install type: local demo, private managed install, hosted/future
+   - site name
+   - base URL
+   - default timezone
+   - default currency
+   - artifact retention policy
+
+3. **First administrator**
+   - name
+   - email or username
+   - password
+   - recovery warning
+   - forced first login after creation
+
+4. **Security defaults**
+   - require review before export
+   - keep Bright Data disabled unless explicitly enabled
+   - disable live-provider credentials in demo mode
+   - redact logs by default
+   - block plugin installation from unknown sources unless allowlisted
+
+5. **Provider bootstrap**
+   - enable mock provider
+   - validate example provider manifest
+   - create synthetic demo account
+   - show the next command or button to run the first job
+
+6. **Completion**
+   - show admin dashboard URL
+   - show CLI health command
+   - show demo script command
+   - show where artifacts and logs are stored
+
+The setup wizard must be idempotent. If the first admin already exists, the wizard should not allow a second bootstrap admin without an explicit recovery command.
+
+### Bootstrap And Recovery Commands
+
+The CLI should include installation-specific commands, even if some are thin wrappers in v0:
+
+- `utility-watch setup`: interactive or guided first-run setup.
+- `utility-watch setup:check`: non-interactive environment validation for coding agents and CI.
+- `utility-watch db:migrate`: apply pending migrations.
+- `utility-watch admin:create`: create the first admin only when no admin exists.
+- `utility-watch admin:reset`: recovery-only password reset command with local shell access.
+- `utility-watch config:show --redacted`: inspect effective config safely.
+- `utility-watch demo:seed`: install mock provider and synthetic account.
+- `utility-watch doctor`: full health check after setup.
+
+Recovery must be local-shell based in the MVP. Public docs should not ask users to paste secrets or passwords into issues, chat, or public logs.
+
 ### Configuration Model
 
 Configuration should be separated by sensitivity and ownership.
@@ -278,6 +367,8 @@ Configuration should be separated by sensitivity and ownership.
 | Secrets | portal username/password, API key | env-backed handles for local dev | no |
 | Budget policy | per-run and monthly Bright Data caps | env + database policy | safe defaults only |
 | Review policy | confidence threshold, export requirement | config + database | yes |
+| Site profile | site name, base URL, timezone, currency | database + env | safe examples only |
+| User auth policy | password rules, session lifetime | database + env | safe defaults only |
 
 Rules:
 
@@ -285,6 +376,7 @@ Rules:
 - Provider manifests declare what is needed; deployments decide whether to supply it.
 - Account-level policy can be stricter than provider policy.
 - Missing config should fail during `doctor` or validation, not halfway through a run.
+- Setup must distinguish demo mode from private managed mode so sample data cannot be confused with real customer data.
 
 ### Roles And Capabilities
 
@@ -292,9 +384,10 @@ The MVP can be single-user locally, but the architecture should already know whi
 
 | Role | Capabilities | MVP Treatment |
 |---|---|---|
-| Admin | configure system, install providers, manage policies | implied local operator |
-| Operator | run jobs, inspect failures, rerun, add notes | CLI user |
-| Reviewer | approve/reject bills, request provider fix | CLI command or static report action |
+| Owner | first administrator, recovery authority, can manage all settings | created during setup |
+| Admin | configure system, install providers, manage policies | first real UI role |
+| Operator | run jobs, inspect failures, rerun, add notes | CLI and dashboard role |
+| Reviewer | approve/reject bills, request provider fix | review queue role |
 | Plugin developer | create plugins, run fixture tests, submit metadata | documented workflow |
 | Registry maintainer | verify providers, mark broken/deprecated | repo maintainer workflow |
 | Auditor | inspect runs, artifacts, exports, decisions | read-only report/log view |
@@ -302,6 +395,8 @@ The MVP can be single-user locally, but the architecture should already know whi
 Capability names should be designed before the UI exists:
 
 - `providers.install`
+- `providers.activate`
+- `providers.deactivate`
 - `providers.validate`
 - `accounts.create`
 - `jobs.run`
@@ -310,6 +405,9 @@ Capability names should be designed before the UI exists:
 - `bills.export`
 - `registry.publish`
 - `policies.manage`
+- `users.manage`
+- `settings.manage`
+- `setup.complete`
 - `ai.diagnose`
 
 This avoids baking admin-only assumptions into the core.
@@ -617,6 +715,56 @@ This feature helps the platform improve itself operationally without giving AI a
 
 ### Tables
 
+#### `installations`
+
+- `id`
+- `site_name`
+- `base_url`
+- `install_type`
+- `timezone`
+- `default_currency`
+- `setup_completed_at`
+- `created_at`
+- `updated_at`
+
+#### `users`
+
+- `id`
+- `name`
+- `email`
+- `password_hash`
+- `status`
+- `last_login_at`
+- `created_at`
+- `updated_at`
+
+#### `roles`
+
+- `id`
+- `name`
+- `description`
+- `created_at`
+- `updated_at`
+
+#### `user_roles`
+
+- `user_id`
+- `role_id`
+- `created_at`
+
+#### `role_capabilities`
+
+- `role_id`
+- `capability`
+
+#### `settings`
+
+- `key`
+- `value_json`
+- `sensitivity`
+- `updated_by`
+- `updated_at`
+
 #### `providers`
 
 - `id`
@@ -843,9 +991,17 @@ Each error must include:
 
 Required commands:
 
+- `utility-watch setup`
+- `utility-watch setup:check`
+- `utility-watch db:migrate`
+- `utility-watch admin:create`
+- `utility-watch admin:reset`
+- `utility-watch config:show --redacted`
 - `utility-watch doctor`
 - `utility-watch providers:list`
 - `utility-watch providers:install <provider-id>`
+- `utility-watch providers:activate <provider-id>`
+- `utility-watch providers:deactivate <provider-id>`
 - `utility-watch providers:validate <path>`
 - `utility-watch accounts:create`
 - `utility-watch jobs:create`
@@ -860,14 +1016,28 @@ Nice-to-have commands:
 - `utility-watch providers:test <provider-id>`
 - `utility-watch artifacts:list <run-id>`
 - `utility-watch demo`
+- `utility-watch demo:seed`
+- `utility-watch users:list`
 
 ## 16. API v0
 
 Minimal endpoints:
 
 - `GET /health`
+- `GET /setup/status`
+- `POST /setup/complete`
+- `POST /auth/login`
+- `POST /auth/logout`
+- `GET /users`
+- `POST /users`
+- `GET /roles`
+- `GET /settings`
+- `PATCH /settings`
 - `GET /providers`
 - `GET /providers/:id`
+- `POST /providers/:id/install`
+- `POST /providers/:id/activate`
+- `POST /providers/:id/deactivate`
 - `GET /accounts`
 - `POST /accounts`
 - `POST /jobs`
@@ -880,7 +1050,7 @@ Minimal endpoints:
 - `POST /bills/:id/review`
 - `POST /bills/:id/export`
 
-API v0 is local/developer oriented. Public authentication and RBAC are not MVP goals.
+API v0 is local/developer oriented. Hosted/public authentication is not an MVP goal, but first-admin bootstrap and role/capability modeling are MVP architecture requirements so the product does not need to be redesigned after the demo.
 
 ## 17. Registry And Plugin Governance
 
@@ -933,6 +1103,22 @@ A provider submission should include:
 - Runtime logs must never print raw secrets.
 - Database stores secret references, not secret values, unless explicitly running local demo mode.
 - Future production deployments should integrate with a secret manager.
+
+### User Authentication
+
+The MVP does not need enterprise identity, but it does need a credible local admin model.
+
+Minimum rules:
+
+- The first admin is created only through setup when no admin exists.
+- Passwords are hashed with a modern password hashing function.
+- Sessions are HTTP-only when dashboard/API auth exists.
+- CLI recovery commands require local shell access.
+- Setup endpoints are disabled after setup completion.
+- Role checks use capabilities, not hardcoded role names.
+- Audit logs record admin creation, login failures, provider activation, settings changes, exports, and Bright Data enablement.
+
+Future auth can add SSO, MFA, invite flows, and hosted-tenant isolation, but the MVP should not leave first-use access ambiguous.
 
 ### Data Redaction
 
@@ -1096,6 +1282,10 @@ Exit criteria:
 - [ ] Add Docker Compose with MySQL.
 - [ ] Add migration system.
 - [ ] Add schema v0 migrations.
+- [ ] Add installation profile and settings tables.
+- [ ] Add user, role, and capability tables.
+- [ ] Add first-admin bootstrap flow.
+- [ ] Add setup wizard API/CLI path.
 - [ ] Add structured logging.
 - [ ] Add config loading from env.
 - [ ] Add `utility-watch doctor`.
@@ -1103,6 +1293,8 @@ Exit criteria:
 Exit criteria:
 
 - Fresh clone can start MySQL.
+- First-run setup can create exactly one initial admin.
+- Setup status is visible and idempotent.
 - `utility-watch doctor` validates runtime, config, and DB.
 - CI runs typecheck and tests.
 
@@ -1218,6 +1410,8 @@ A milestone is done when:
 
 - Fresh clone works from README instructions.
 - Docker Compose starts required services.
+- First-run setup guides the user through environment check, site profile, first admin creation, security defaults, and demo provider bootstrap.
+- Setup cannot create multiple first admins accidentally.
 - CLI doctor passes.
 - Manifest validation catches invalid plugins.
 - Mock provider run completes.
@@ -1229,6 +1423,7 @@ A milestone is done when:
 ### Product Acceptance
 
 - A collaborator can explain the platform without private context.
+- A new operator understands how to install, log in, add users, install plugins, configure an account, run a job, review a bill, and export data.
 - The plugin model is clear.
 - Bright Data integration is clearly bounded.
 - The MVP demonstrates a repeatable provider lifecycle.
@@ -1251,6 +1446,7 @@ A milestone is done when:
 
 ### Operations Acceptance
 
+- The first administrator can manage users, roles, provider activation, settings, and policies.
 - A failed run tells the operator what happened and what to do next.
 - A blocked provider can be marked broken without deleting it from the registry.
 - A run can be retried without losing the original audit trail.
@@ -1536,6 +1732,7 @@ Required docs before MVP demo:
 - `README.md`: clone-to-demo path and project overview.
 - `PLAN.md`: product and implementation plan.
 - `docs/platform-architecture.md`: core, plugin lifecycle, registry, hooks/events, permissions, and adapter architecture.
+- `docs/installation-and-onboarding.md`: install states, first-use wizard, first admin creation, roles, setup recovery, and provider onboarding.
 - `docs/public-private-boundary.md`: what can and cannot be public.
 - `docs/provider-submission-checklist.md`: provider quality gate.
 - `docs/plugin-contract.md`: manifest and lifecycle reference.
@@ -1559,8 +1756,9 @@ Recommended after MVP:
 2. Add package manager config and scripts.
 3. Add Docker Compose with MySQL.
 4. Add config loader and validation.
-5. Implement `utility-watch doctor`.
-6. Add CI for typecheck, tests, JSON validation, and `git diff --check` equivalent.
+5. Implement setup state detection, migrations, and first-admin bootstrap.
+6. Implement `utility-watch doctor`.
+7. Add CI for typecheck, tests, JSON validation, and `git diff --check` equivalent.
 
 ### P1 - Prove The Plugin Boundary
 

@@ -22,7 +22,90 @@ Utility Watch has three durable layers:
 
 The MVP should prove the contract among these layers. It does not need broad provider coverage.
 
-## 2. Core Responsibilities
+## 2. Installation And First-Use Model
+
+Utility Watch should install like a real platform, not like a loose script bundle. A clean operator should be able to clone the repo into a container, VPS, or local machine, start dependencies, run setup, create the first admin, and enter an operational dashboard or CLI workflow.
+
+The first-use model has five states:
+
+1. **Unconfigured**
+   - source code exists
+   - dependencies may not be installed
+   - no database migrations have run
+   - no administrator exists
+
+2. **Environment ready**
+   - runtime dependencies are present
+   - database is reachable
+   - artifact storage is writable
+   - environment config has been loaded
+
+3. **Bootstrapped**
+   - migrations are applied
+   - installation profile exists
+   - setup status is persisted
+
+4. **Admin ready**
+   - first administrator exists
+   - setup endpoints are locked
+   - role/capability defaults are installed
+
+5. **Operational**
+   - provider registry is readable
+   - mock provider is available
+   - demo account can be created
+   - jobs, runs, review, and export are available
+
+The setup wizard and CLI should move the installation through these states explicitly. Re-running setup should report the current state and the next safe action instead of duplicating admins or overwriting settings.
+
+### First-Use Wizard
+
+The wizard should collect only what the platform needs to become safe and usable:
+
+- site name
+- base URL
+- timezone
+- default currency
+- first administrator
+- artifact retention mode
+- review-before-export default
+- Bright Data enabled/disabled state
+- demo mode vs private managed mode
+
+The wizard should not ask for live provider credentials during initial setup. Provider credentials belong in account configuration after the operator understands the provider plugin and policy.
+
+### User, Role, And Capability Model
+
+Roles are convenience bundles. Capabilities are the real authorization checks.
+
+Initial roles:
+
+- Owner: first administrator and recovery authority.
+- Admin: manages settings, users, policies, providers, and plugins.
+- Operator: runs jobs and handles failures.
+- Reviewer: approves, rejects, and comments on bills.
+- Auditor: reads runs, artifacts, reviews, and exports.
+- Plugin developer: validates and tests providers locally.
+
+Important capabilities:
+
+- setup.complete
+- settings.manage
+- users.manage
+- providers.install
+- providers.activate
+- providers.deactivate
+- accounts.create
+- jobs.run
+- runs.inspect
+- bills.review
+- bills.export
+- policies.manage
+- ai.diagnose
+
+The MVP can implement a minimal local version, but the data model should not assume a single permanent superuser.
+
+## 3. Core Responsibilities
 
 The core is the trusted platform boundary. It should be boring, stable, and provider-agnostic.
 
@@ -52,7 +135,7 @@ Core non-responsibilities:
 - Embedding customer-specific accounting rules.
 - Guaranteeing full automation for every provider.
 
-## 3. Provider Plugin Responsibilities
+## 4. Provider Plugin Responsibilities
 
 A provider plugin is a controlled adapter for one provider portal or provider family.
 
@@ -80,7 +163,7 @@ Plugins should not:
 - Modify other plugins.
 - Modify core runtime behavior outside declared hooks.
 
-## 4. Plugin Manifest
+## 5. Plugin Manifest
 
 Every plugin should ship with a machine-readable manifest. The manifest is the public contract before code runs.
 
@@ -123,7 +206,7 @@ Recommended manifest fields:
 
 The core should reject plugins that omit required metadata or request undeclared permissions at runtime.
 
-## 5. Plugin Lifecycle
+## 6. Plugin Lifecycle
 
 The platform needs a complete plugin lifecycle from day one, even if the MVP implements only a CLI version.
 
@@ -235,7 +318,7 @@ Uninstall must not silently delete:
 - Artifacts needed for audit.
 - Account configuration without an explicit archive/delete policy.
 
-## 6. Hook And Event System
+## 7. Hook And Event System
 
 The platform needs an explicit event system so plugins and internal modules can extend behavior without modifying core.
 
@@ -292,7 +375,7 @@ Recommended filter events:
 - Plugins can subscribe only to allowed events.
 - Security-sensitive filters should be core-only unless explicitly allowed.
 
-## 7. Execution Adapters
+## 8. Execution Adapters
 
 The core should expose execution adapters behind a stable interface.
 
@@ -312,7 +395,7 @@ Adapter selection should be policy-driven:
 4. Escalate to Bright Data only when the provider or account policy allows it.
 5. Stop with a clear failure when automation becomes unsafe, too expensive, or blocked by policy.
 
-## 8. Bright Data Boundary
+## 9. Bright Data Boundary
 
 Bright Data should be an optional platform capability, not a plugin dependency.
 
@@ -335,7 +418,7 @@ Recommended policy controls:
 - Artifact retention limits.
 - Debug artifact redaction.
 
-## 9. Registry And Marketplace Model
+## 10. Registry And Marketplace Model
 
 The registry is the trust and discovery layer.
 
@@ -375,7 +458,7 @@ Marketplace features to model but not build in MVP:
 
 MVP should focus on trust metadata and installability, not monetization.
 
-## 10. Quality Gates
+## 11. Quality Gates
 
 Plugins should pass checks before they become visible as recommended providers.
 
@@ -405,7 +488,7 @@ Recommended gates after MVP:
 - Maintainer verification.
 - Signed releases.
 
-## 11. Permission And Sandbox Model
+## 12. Permission And Sandbox Model
 
 Provider plugins handle sensitive workflows. Permissions should be explicit.
 
@@ -439,7 +522,7 @@ Future isolation options:
 - Signed plugin packages.
 - Policy engine for runtime permissions.
 
-## 12. Data Model Boundaries
+## 13. Data Model Boundaries
 
 Utility Watch has three data classes:
 
@@ -467,7 +550,7 @@ Public repo content must stay in class 1.
 
 Runtime systems may handle classes 2 and 3, but must redact logs and isolate artifacts.
 
-## 13. Admin And Operator UX
+## 14. Admin And Operator UX
 
 The platform should eventually support both CLI and web admin flows.
 
@@ -499,7 +582,7 @@ Future admin flows:
 
 The core UX principle: an operator should not need to read plugin code to understand what happened.
 
-## 14. Run State Machine
+## 15. Run State Machine
 
 The run state machine should be controlled by core.
 
@@ -521,7 +604,7 @@ Recommended states:
 
 Plugins can report progress, but core decides state transitions.
 
-## 15. Installation Model
+## 16. Installation Model
 
 The installation model should feel like installing a small operating system for bill retrieval, not like copying scripts to a server.
 
@@ -570,7 +653,7 @@ Required install-time checks:
 - No production mode without configured secret backend.
 - Bright Data disabled unless explicitly configured.
 
-## 16. User, Role, And Capability Model
+## 17. User, Role, And Capability Model
 
 Users and roles are platform-level concepts. Provider plugins should not own user authorization.
 
@@ -611,7 +694,7 @@ Example capabilities:
 
 Critical rule: plugin code must never decide whether a user is allowed to do something. The core checks authorization before plugin execution, artifact access, review approval, and export.
 
-## 17. Configuration Hierarchy
+## 18. Configuration Hierarchy
 
 Configuration should be explicit and layered so operators know where a behavior came from.
 
@@ -634,7 +717,7 @@ Examples:
 
 Configuration values should be inspectable. A run record should show the resolved effective config that mattered for that run, redacted where necessary.
 
-## 18. Plugin Package Anatomy
+## 19. Plugin Package Anatomy
 
 A plugin should be a package with predictable files.
 
@@ -673,7 +756,7 @@ Required package expectations:
 
 The platform should treat plugin code as replaceable. Historical runs must store plugin ID and version so old results remain explainable after updates.
 
-## 19. Plugin Lifecycle Data
+## 20. Plugin Lifecycle Data
 
 Lifecycle events should produce records, not just logs.
 
@@ -692,7 +775,7 @@ Each record should include plugin ID, version, actor, timestamp, decision, polic
 
 This matters because plugin platforms fail operationally when nobody knows what changed before a provider started failing.
 
-## 20. Security Architecture
+## 21. Security Architecture
 
 Security should be part of the platform model, not an afterthought.
 
@@ -730,7 +813,7 @@ Threats to design against:
 
 The MVP can start with process-level isolation later, but the contracts should already express permissions, domains, artifacts, secrets, and adapter access.
 
-## 21. Admin UI Concept
+## 22. Admin UI Concept
 
 The first implementation can be CLI-first, but the architecture should anticipate an admin UI.
 
@@ -749,7 +832,7 @@ The key UX rule: a non-developer operator should be able to answer three questio
 2. Can I trust the extracted bill?
 3. What do I do next?
 
-## 22. Publishing And Governance
+## 23. Publishing And Governance
 
 The registry should eventually behave like a trust layer for extensions.
 
@@ -781,7 +864,7 @@ Submission checklist:
 
 Governance should optimize for trust, not plugin count. A small number of honest, well-tested providers is better than a large registry of brittle packages.
 
-## 23. Extension Points To Preserve
+## 24. Extension Points To Preserve
 
 The platform should preserve extension points in predictable places.
 
@@ -804,7 +887,7 @@ Important extension points:
 
 Each extension point should have typed input, typed output, timeout, error type, logging rules, permission scope, and test fixture expectations.
 
-## 24. Architecture Decisions Before Coding
+## 25. Architecture Decisions Before Coding
 
 Before implementing the core, decide:
 
@@ -823,7 +906,7 @@ Recommended MVP choices:
 - Local folder plugins plus registry JSON.
 - Mock portal as the reliable demo, Bright Data flow as the escalation demo.
 
-## 25. Artifact Strategy
+## 26. Artifact Strategy
 
 Artifacts provide evidence and debugging context.
 
@@ -846,7 +929,7 @@ Artifact rules:
 - Private artifacts never enter the public repo.
 - Retention policy should be explicit.
 
-## 26. Update And Compatibility Strategy
+## 27. Update And Compatibility Strategy
 
 Provider portals change often. Plugin update design is not optional.
 
@@ -872,7 +955,7 @@ Rollback requirements:
 - Allow deactivation of broken plugin version.
 - Allow pinning accounts to known working plugin version later.
 
-## 27. MVP Architecture Decisions
+## 28. MVP Architecture Decisions
 
 Recommended MVP decisions:
 
@@ -888,7 +971,7 @@ Recommended MVP decisions:
 - No payments, ratings, or hosted marketplace in MVP.
 - No private provider code copied into the public repo.
 
-## 28. MVP Slice
+## 29. MVP Slice
 
 The smallest credible MVP is:
 
@@ -905,7 +988,7 @@ The smallest credible MVP is:
 
 This proves the platform pattern without pretending to support many utilities on day one.
 
-## 29. Design Risks
+## 30. Design Risks
 
 ### Over-abstracting Too Early
 
@@ -937,7 +1020,7 @@ Risk: platform becomes a Bright Data wrapper.
 
 Mitigation: adapter interface and local-first execution policy.
 
-## 30. Implementation Rule
+## 31. Implementation Rule
 
 Every MVP feature should answer one of these questions:
 

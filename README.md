@@ -27,12 +27,31 @@ Utility Watch turns portal-specific knowledge into installable plugins:
 
 ## Early Shape
 
-\`\`\`txt
+```txt
 packages/core/          Core runtime, CLI, API, plugin loader
 plugins/                Provider plugins
 registry/               Provider registry metadata
 docs/                   Architecture and plugin documentation
-\`\`\`
+```
+
+## Intended Install Flow
+
+The product should be installable from a clean container, VPS, or local machine without private project context.
+
+Target flow:
+
+1. Clone this repository.
+2. Copy `.env.example` to `.env`.
+3. Start MySQL with Docker Compose.
+4. Run setup checks and migrations.
+5. Open the first-use setup wizard.
+6. Create the first administrator account.
+7. Confirm security defaults and demo mode.
+8. Install or activate a provider plugin.
+9. Configure an account with secret references.
+10. Run a retrieval job, review the bill, and export approved JSON.
+
+The MVP should make this flow work first with synthetic data and a mock provider. Live provider credentials and private deployments come after the installation and plugin lifecycle are reliable.
 
 ## MVP Target
 
@@ -48,7 +67,7 @@ The first MVP should prove the whole pattern with a small surface:
 - Minimal review/export workflow
 - A demo path that works without private credentials
 
-See [PLAN.md](./PLAN.md) for the build plan, [Platform Architecture](./docs/platform-architecture.md) for the extension model, [Plugin Contract](./docs/plugin-contract.md) for provider package rules, [Bright Data Policy](./docs/bright-data-policy.md) for escalation boundaries, [Demo Script](./docs/demo-script.md) for the first public walkthrough, and [AI-Assisted Improvement Model](./docs/ai-assisted-improvement.md) for the optional intelligence layer.
+See [PLAN.md](./PLAN.md) for the build plan, [Installation And Onboarding](./docs/installation-and-onboarding.md) for the first-use product flow, [Platform Architecture](./docs/platform-architecture.md) for the extension model, [Plugin Contract](./docs/plugin-contract.md) for provider package rules, [Bright Data Policy](./docs/bright-data-policy.md) for escalation boundaries, [Demo Script](./docs/demo-script.md) for the first public walkthrough, and [AI-Assisted Improvement Model](./docs/ai-assisted-improvement.md) for the optional intelligence layer.
 
 ## MVP Demo Flow
 
