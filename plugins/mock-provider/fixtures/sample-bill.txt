@@ -1,0 +1,10 @@
+EXAMPLE ELECTRIC — Monthly Statement
+Account: DEMO-0001
+Statement Date: 2026-05-01
+Service Period: 2026-04-01 to 2026-04-30
+Amount Due: $128.44
+Due Date: 2026-05-21
+
+Charges:
+Electric usage    $100.12
+Taxes and fees    $28.32

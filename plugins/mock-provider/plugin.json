@@ -1,0 +1,37 @@
+{
+  "id": "mock-provider",
+  "name": "Mock Utility Provider",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "schemaVersion": "uw-plugin-v1",
+  "coreVersion": ">=0.1.0 <1.0.0",
+  "country": "US",
+  "serviceTypes": ["electricity"],
+  "homepage": "https://example.test",
+  "entrypoint": "./src/index.ts",
+  "capabilities": ["auth.login", "bills.list", "bills.download", "bills.normalize", "healthcheck.run"],
+  "auth": {
+    "type": "username-password",
+    "secretRefs": ["username", "password"]
+  },
+  "permissions": {
+    "network": ["example.test"],
+    "artifacts": ["text", "json"],
+    "filesystem": "artifacts-only",
+    "brightData": "unsupported"
+  },
+  "quality": {
+    "status": "draft",
+    "verification": "fixture-only",
+    "lastVerified": null,
+    "limitations": ["Deterministic mock; not connected to a live portal"]
+  },
+  "tests": {
+    "fixtures": "./fixtures",
+    "healthcheck": "npm run test:plugin"
+  },
+  "support": {
+    "maintainer": "Utility Watch Maintainers",
+    "url": "https://github.com/kapitecsoluciones/utility-watch/issues"
+  }
+}

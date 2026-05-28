@@ -1,0 +1,11 @@
+{
+  "name": "@utility-watch/provider-mock",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Deterministic mock provider for docs, tests, and the demo vertical slice.",
+  "scripts": {
+    "test:plugin": "node --import tsx --test src/parser.test.ts"
+  }
+}
