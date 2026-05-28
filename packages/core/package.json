@@ -4,6 +4,10 @@
   "license": "Apache-2.0",
   "description": "Utility Watch core runtime: CLI, config, database, setup, and the doctor health check.",
   "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "bin": {
     "utility-watch": "src/cli/index.ts"
   },
@@ -14,7 +18,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
     "dev": "node --import tsx src/cli/index.ts",
-    "test": "node --import tsx --test src/config/config.test.ts src/auth/password.test.ts src/db/migrate.test.ts"
+    "test": "node --import tsx --test src/config/config.test.ts src/auth/password.test.ts src/db/migrate.test.ts src/plugins/validate.test.ts src/plugins/loader.test.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
