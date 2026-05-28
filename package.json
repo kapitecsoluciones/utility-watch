@@ -1,0 +1,21 @@
+{
+  "name": "utility-watch",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Open-source plugin platform for utility bill retrieval, normalization, review, and export.",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "plugins/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @utility-watch/core",
+    "test": "npm run test --workspace @utility-watch/core",
+    "utility-watch": "node --import tsx packages/core/src/cli/index.ts",
+    "doctor": "npm run utility-watch -- doctor",
+    "setup": "npm run utility-watch -- setup"
+  }
+}
