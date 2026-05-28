@@ -165,6 +165,29 @@ These non-goals should stay visible during implementation because they are the e
 - Do not add production multi-tenancy before the local single-tenant workflow is reliable.
 - Do not depend on a fragile live portal for the main demo path.
 
+### MVP Decision Rules
+
+When implementation choices compete, use these rules in order:
+
+1. **Demo reliability beats provider realism.** The primary demo path must work without live credentials or fragile portals.
+2. **Platform boundary beats feature count.** A small core with one clean plugin is more valuable than many hardcoded providers.
+3. **Auditability beats automation depth.** A run that explains what happened is better than a silent automated fetch.
+4. **Policy-first Bright Data usage beats hidden escalation.** Bright Data must be visible, intentional, bounded, and explainable.
+5. **Contributor clarity beats internal cleverness.** External developers should understand provider development without private context.
+6. **Security defaults beat convenience.** If a setting could expose secrets, spend budget, or export low-confidence data, default to off or review.
+
+### MVP Definition Of Done
+
+The MVP is done only when all of these are true:
+
+- A new developer can run the documented demo from a fresh clone.
+- The demo proves the full lifecycle: discover, install, configure, run, review, export.
+- At least one provider is implemented as a plugin, not as core logic.
+- Every persisted bill points to evidence and confidence metadata.
+- Bright Data appears as an optional adapter with opt-in and budget metadata.
+- The public repository contains no private customer data, private portal screenshots, credentials, tokens, or client names.
+- The next provider can be started from a template and validated with documented commands.
+
 ## 5. MVP Scope
 
 ### In Scope
@@ -217,6 +240,79 @@ These non-goals should stay visible during implementation because they are the e
 - Version pinning policies per tenant.
 - Role-based access control.
 - Multi-tenant SaaS packaging.
+
+### Installation Model
+
+The platform should support three installation shapes over time, but the MVP should implement only the first one.
+
+1. **Local developer install**
+   - Docker Compose for MySQL and local services.
+   - Environment variables for non-secret config.
+   - Placeholder secret handles for examples.
+   - File-based artifacts under a local data directory.
+   - CLI-first operation.
+
+2. **Private managed install**
+   - Same core runtime.
+   - Private credentials and customer data outside the public repo.
+   - Optional private plugins.
+   - Optional private registry overlay.
+   - Stronger artifact retention and backup policy.
+
+3. **Hosted product install**
+   - Future SaaS or managed control plane.
+   - Tenant isolation, hosted registry, role-based access, billing, and support workflows.
+   - Not part of the MVP.
+
+The MVP should not pretend to be production-hosted. It should prove that the install path, config model, plugin lifecycle, and audit trail are coherent.
+
+### Configuration Model
+
+Configuration should be separated by sensitivity and ownership.
+
+| Config Type | Example | Storage In MVP | Public Repo Allowed |
+|---|---|---|---|
+| Runtime config | DB host, artifact path, log level | `.env` / env vars | `.env.example` only |
+| Provider policy | allowed adapters, domains, Bright Data mode | manifest + registry | yes |
+| Account config | account display name, provider ID, secret handle | database | synthetic only |
+| Secrets | portal username/password, API key | env-backed handles for local dev | no |
+| Budget policy | per-run and monthly Bright Data caps | env + database policy | safe defaults only |
+| Review policy | confidence threshold, export requirement | config + database | yes |
+
+Rules:
+
+- Public examples show handles, never values.
+- Provider manifests declare what is needed; deployments decide whether to supply it.
+- Account-level policy can be stricter than provider policy.
+- Missing config should fail during `doctor` or validation, not halfway through a run.
+
+### Roles And Capabilities
+
+The MVP can be single-user locally, but the architecture should already know which roles will exist.
+
+| Role | Capabilities | MVP Treatment |
+|---|---|---|
+| Admin | configure system, install providers, manage policies | implied local operator |
+| Operator | run jobs, inspect failures, rerun, add notes | CLI user |
+| Reviewer | approve/reject bills, request provider fix | CLI command or static report action |
+| Plugin developer | create plugins, run fixture tests, submit metadata | documented workflow |
+| Registry maintainer | verify providers, mark broken/deprecated | repo maintainer workflow |
+| Auditor | inspect runs, artifacts, exports, decisions | read-only report/log view |
+
+Capability names should be designed before the UI exists:
+
+- `providers.install`
+- `providers.validate`
+- `accounts.create`
+- `jobs.run`
+- `runs.inspect`
+- `bills.review`
+- `bills.export`
+- `registry.publish`
+- `policies.manage`
+- `ai.diagnose`
+
+This avoids baking admin-only assumptions into the core.
 
 ## 6. Core Architecture
 
@@ -272,6 +368,32 @@ These non-goals should stay visible during implementation because they are the e
 9. **Export Layer**
    - Produces JSON v0.
    - Later maps to accounting systems.
+
+### Module Responsibility Matrix
+
+| Module | Owns | Must Not Own |
+|---|---|---|
+| CLI | commands, local operator workflow, validation output | provider-specific portal logic |
+| API | local JSON interface, dashboard/report access | public SaaS auth in MVP |
+| Config | environment loading, policy defaults, validation | raw secret storage |
+| Database | durable records, migrations, state transitions | binary artifacts |
+| Registry | provider discovery, status, metadata, verification | credentials or account configuration |
+| Plugin loader | manifest validation, permissions, lifecycle binding | runtime business decisions outside the manifest |
+| Runner | run orchestration, status transitions, error mapping | portal selectors or provider-specific parsing |
+| Adapters | browser/fetch capabilities, Bright Data integration, usage metadata | bill normalization rules |
+| Artifact store | files, hashes, retention metadata, redaction status | review decisions |
+| Review | confidence thresholds, approval/rejection, notes | parser implementation |
+| Export | deterministic output contracts | accounting-system side effects in MVP |
+
+### Core Design Invariants
+
+- Core never imports provider-specific selectors.
+- Providers never receive raw global config.
+- Providers request capabilities through context objects instead of constructing infrastructure directly.
+- Every run has exactly one selected adapter and a recorded selection reason.
+- Every state transition is explicit, persisted, and inspectable.
+- Every export is derived from an approved bill record.
+- Artifacts are sensitive by default, even in local development.
 
 ### Preferred Runtime Shape
 
@@ -458,7 +580,40 @@ Bright Data is a retrieval reliability layer, not the product itself.
 - Any account using Bright Data must opt in.
 - Demo scripts should use tiny, bounded runs.
 
-## 10. Data Model v0
+## 10. AI-Assisted Improvement Model
+
+AI is not the product and should not be framed as a magic retrieval agent. Utility Watch should remain a governed utility bill retrieval platform. AI can be valuable as an optional improvement layer around maintenance, diagnosis, and operator clarity.
+
+### Good AI Use Cases
+
+- **Run diagnosis:** summarize why a run failed using error taxonomy, adapter metadata, screenshots, redacted HTML, plugin version, and prior failure history.
+- **Portal change triage:** compare new artifacts against previous successful artifacts and suggest likely selector, text, or flow changes.
+- **Parser assistance:** propose parser updates and fixture tests from synthetic or redacted samples.
+- **Registry quality scoring:** explain provider health using deterministic signals like verification age, failure rate, fixture coverage, known limitations, and maintainer activity.
+- **Operator assistant:** draft action hints for failures, review notes, and maintainer issues.
+
+### AI Must Not Do In MVP
+
+- Hold or request raw credentials.
+- Approve bills or exports without human action.
+- Decide to spend Bright Data budget without policy.
+- Browse undeclared provider domains.
+- Commit generated plugin changes without review.
+- Replace deterministic validation, schemas, tests, or audit logs.
+
+### Suggested MVP AI Feature
+
+The best first AI feature is **Run Diagnosis Notes**:
+
+1. A run fails or enters `blocked`, `failed`, or `needs_review`.
+2. Core collects redacted logs, error code, adapter metadata, and safe artifact snippets.
+3. AI produces a short diagnosis, likely cause, suggested next action, and confidence.
+4. The note is stored as run metadata.
+5. The operator can accept, ignore, or convert it into a maintainer issue.
+
+This feature helps the platform improve itself operationally without giving AI authority over retrieval, security, spending, review, or export.
+
+## 11. Data Model v0
 
 ### Tables
 
@@ -584,7 +739,7 @@ Bright Data is a retrieval reliability layer, not the product itself.
 - `status`
 - `created_at`
 
-## 11. Normalized Bill Schema v0
+## 12. Normalized Bill Schema v0
 
 Required fields:
 
@@ -632,7 +787,7 @@ Example:
 }
 ```
 
-## 12. Run States
+## 13. Run States
 
 ### Job-Level States
 
@@ -659,7 +814,7 @@ Example:
 - `needs_provider_fix`
 - `duplicate`
 
-## 13. Error Taxonomy
+## 14. Error Taxonomy
 
 - `AUTH_INVALID`: credentials rejected.
 - `MFA_REQUIRED`: human MFA step required.
@@ -684,7 +839,7 @@ Each error must include:
 - retryable flag
 - operator action hint
 
-## 14. CLI v0
+## 15. CLI v0
 
 Required commands:
 
@@ -706,7 +861,7 @@ Nice-to-have commands:
 - `utility-watch artifacts:list <run-id>`
 - `utility-watch demo`
 
-## 15. API v0
+## 16. API v0
 
 Minimal endpoints:
 
@@ -727,7 +882,7 @@ Minimal endpoints:
 
 API v0 is local/developer oriented. Public authentication and RBAC are not MVP goals.
 
-## 16. Registry And Plugin Governance
+## 17. Registry And Plugin Governance
 
 ### Verification Levels
 
@@ -769,7 +924,7 @@ A provider submission should include:
 - Known limitations.
 - Maintainer contact.
 
-## 17. Security And Privacy
+## 18. Security And Privacy
 
 ### Secret Handling
 
@@ -830,7 +985,7 @@ The MVP threat model should be explicit even if sandboxing is not fully mature.
 - Treat public fixtures as synthetic unless explicitly marked otherwise.
 - Fail closed when confidence, authorization, or adapter policy is unclear.
 
-## 18. Hackathon Demo Plan
+## 19. Hackathon Demo Plan
 
 ### Demo Story
 
@@ -890,7 +1045,28 @@ The demo should make these points visible without explanation-heavy slides:
 - **Maintainability:** provider failure becomes a registry/status/update problem, not a core rewrite.
 - **Open-source potential:** outside developers can add providers using a documented contract.
 
-## 19. Milestone Plan
+## 20. Milestone Plan
+
+The milestone order is intentional. Do not start provider volume, marketplace polish, or live portal coverage before the vertical slice exists.
+
+### Dependency Map
+
+```txt
+Milestone 0 Repository Foundation
+  -> Milestone 1 Core Skeleton
+    -> Milestone 2 Plugin Loader
+      -> Milestone 3 Runner And Artifacts
+        -> Milestone 4 Bill Normalization And Review
+          -> Milestone 7 Demo Package
+    -> Milestone 5 Bright Data Adapter
+    -> Milestone 6 Registry v0
+```
+
+Critical path for the hackathon demo:
+
+```txt
+doctor -> manifest validation -> mock provider run -> artifact trail -> normalized bill -> review -> export -> Bright Data escalation
+```
 
 ### Milestone 0 - Repository Foundation
 
@@ -1016,7 +1192,27 @@ Exit criteria:
 - Demo uses no private data.
 - Demo clearly shows why the plugin model matters.
 
-## 20. Acceptance Criteria
+### Milestone Definition Of Ready
+
+A milestone is ready to start when:
+
+- The previous dependency milestone has met exit criteria.
+- Required schemas or interfaces are documented before implementation.
+- Test or verification commands are known.
+- Public/private data boundaries are clear for any fixture or artifact.
+- The milestone can be completed without needing private credentials.
+
+### Milestone Definition Of Done
+
+A milestone is done when:
+
+- Its exit criteria pass from a clean checkout.
+- New commands are documented.
+- Tests or validation checks run in CI where practical.
+- Any new public artifact is synthetic or sanitized.
+- The plan or docs are updated if implementation changed the architecture.
+
+## 21. Acceptance Criteria
 
 ### Technical Acceptance
 
@@ -1061,7 +1257,7 @@ Exit criteria:
 - Artifact retention is documented.
 - Bright Data spend is visible per run and can be capped.
 
-## 21. First Provider Candidates
+## 22. First Provider Candidates
 
 Recommended sequence:
 
@@ -1085,7 +1281,7 @@ Recommended sequence:
 
 Long-term provider examples may include electricity, gas, water, waste, internet, and telecom utilities across countries, but MVP should avoid promising coverage before plugins exist.
 
-## 22. Risks
+## 23. Risks
 
 ### Scope Creep
 
@@ -1141,7 +1337,7 @@ Risk: low-quality plugins enter the registry and make the platform look unreliab
 
 Mitigation: require fixture tests, parser tests, declared limitations, verification levels, and broken/deprecated statuses.
 
-## 23. Open Decisions
+## 24. Open Decisions
 
 - Final project name: Utility Watch vs Utilitual.
 - First non-mock provider for public demo.
@@ -1156,7 +1352,20 @@ Mitigation: require fixture tests, parser tests, declared limitations, verificat
 - Whether browser automation should be allowed inside plugins directly or only through adapter-provided capabilities.
 - Whether OCR/LLM parsing belongs in core as an optional parser adapter or remains provider-specific until v1.
 
-## 24. Delivery Tracks
+### Decision Biases For v0
+
+Until there is evidence to choose otherwise, use these defaults:
+
+- Project name: keep **Utility Watch** for public clarity; keep **Utilitual** as an optional internal codename only.
+- Dashboard: start with a generated HTML report before building a full web app.
+- Plugin location: monorepo plugins for v0; allow external package support later.
+- Registry: static JSON for v0; hosted/package registry later.
+- Private plugins: support the deployment pattern through docs, but do not build private registry mechanics in MVP.
+- Browser access: plugins receive adapter-provided browser capabilities; they should not create browsers directly.
+- AI/OCR parsing: keep optional and policy-gated; deterministic parsers remain the first path.
+- Bright Data product: prefer browser adapter for the visible demo, document unlocker/SERP/MCP as later adapter options.
+
+## 25. Delivery Tracks
 
 Utility Watch needs two different tracks: a hackathon track that proves the idea quickly, and a product track that prevents the prototype from becoming throwaway code.
 
@@ -1219,7 +1428,7 @@ Can wait:
 - Advanced isolation.
 - Hosted registry.
 
-## 25. Marketplace And Registry Model
+## 26. Marketplace And Registry Model
 
 The MVP should avoid payments, but it should model provider publishing from day one.
 
@@ -1270,7 +1479,7 @@ No provider should be considered usable unless it has:
 - Bright Data policy
 - maintainer metadata
 
-## 26. Testing Strategy
+## 27. Testing Strategy
 
 Testing must prove the platform boundaries, not just happy-path scraping.
 
@@ -1318,7 +1527,7 @@ Testing must prove the platform boundaries, not just happy-path scraping.
 - undeclared secret access fails validation
 - fixture scan blocks obvious private data patterns
 
-## 27. Documentation Inventory
+## 28. Documentation Inventory
 
 The repo should grow documentation only when it supports execution.
 
@@ -1342,22 +1551,51 @@ Recommended after MVP:
 - `docs/operations.md`
 - `docs/accounting-export.md`
 
-## 28. Immediate Next Steps
+## 29. Immediate Next Steps
 
-1. Add project instructions file for coding agents.
-2. Add Node/TypeScript workspace skeleton.
+### P0 - Make The Repo Runnable
+
+1. Add Node/TypeScript workspace skeleton.
+2. Add package manager config and scripts.
 3. Add Docker Compose with MySQL.
-4. Implement `utility-watch doctor`.
-5. Define schemas first: `plugin.json`, registry provider card, normalized bill, run record.
-6. Implement manifest and registry validation in CI.
-7. Add mock provider and fixture test harness.
-8. Implement run records, artifact storage, and redacted logging.
-9. Implement normalized bill creation, review state, and deterministic JSON export.
-10. Add generated HTML run report or minimal dashboard.
-11. Add Bright Data adapter behind explicit env flag and account/provider opt-in.
-12. Add blocked-provider demo with strict budget and synthetic/safe target.
+4. Add config loader and validation.
+5. Implement `utility-watch doctor`.
+6. Add CI for typecheck, tests, JSON validation, and `git diff --check` equivalent.
 
-## 29. Perspective Review
+### P1 - Prove The Plugin Boundary
+
+1. Define schemas first: `plugin.json`, registry provider card, normalized bill, run record.
+2. Implement manifest and registry validation.
+3. Add provider install/list/validate commands.
+4. Add mock provider and fixture test harness.
+5. Add provider template documentation.
+
+### P2 - Prove The Bill Lifecycle
+
+1. Implement run records and state transitions.
+2. Implement artifact storage and redacted logging.
+3. Implement normalized bill creation.
+4. Implement review state.
+5. Implement deterministic JSON export.
+6. Add generated HTML run report or minimal dashboard.
+
+### P3 - Prove Web Retrieval And Escalation
+
+1. Add local Playwright adapter.
+2. Add controlled demo portal or safe public target.
+3. Add Bright Data adapter behind explicit env flag and account/provider opt-in.
+4. Add blocked-provider demo with strict budget and synthetic/safe target.
+5. Show adapter metadata in run output and demo report.
+
+### P4 - Package The Demo
+
+1. Keep the main demo under 5 minutes.
+2. Add terminal-friendly demo script.
+3. Add screenshots or a generated report for judges.
+4. Add failure-path example that shows action hints.
+5. Confirm the repo remains free of private terms, secrets, real bills, and private artifacts.
+
+## 30. Perspective Review
 
 This section is the second-pass critique. It exists to keep the project balanced across product, engineering, security, demo quality, and open-source credibility.
 
@@ -1452,7 +1690,7 @@ Hackathon priorities:
 - Show Bright Data escalation as a controlled capability.
 - Show why this becomes more valuable as provider count grows.
 
-## 30. Recommended Build Sequence
+## 31. Recommended Build Sequence
 
 Build one vertical slice before broadening the system.
 
@@ -1504,7 +1742,7 @@ Done means the platform can retrieve web data and preserve evidence.
 
 Done means Bright Data is valuable but not a hidden dependency.
 
-## 31. Recommendation
+## 32. Recommendation
 
 Build the platform path before adding provider volume.
 
