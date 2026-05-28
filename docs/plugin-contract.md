@@ -127,18 +127,22 @@ Every result should include:
 - evidence: artifact references when relevant.
 - error: structured error object when failed.
 
-Errors should map into the shared taxonomy:
+Errors should map into the shared taxonomy. This list is the single canonical error taxonomy for the whole platform; `PLAN.md` and the runner reference it rather than redefining their own codes:
 
 - auth.invalid_credentials
-- auth.mfa_required
+- auth.mfa_required — always requires human action; never auto-solved.
 - portal.layout_changed
 - portal.blocked
 - portal.timeout
+- portal.rate_limited
 - provider.unsupported_account
 - bill.not_found
 - bill.parse_failed
+- bill.low_confidence — normalized fields did not meet the confidence threshold.
 - policy.denied
 - adapter.failed
+- artifact.missing — an expected screenshot, HTML, or PDF artifact was not produced.
+- error.unknown — fallback for unclassified failures.
 
 ## 8. Artifact Rules
 
