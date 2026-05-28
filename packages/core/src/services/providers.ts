@@ -11,11 +11,17 @@ export interface RegistryProvider {
   status: string;
   verification: string;
   brightData: string;
+  package?: string;
 }
 
 export async function readRegistry(): Promise<RegistryProvider[]> {
   const json = JSON.parse(await readFile(registryFile, "utf8")) as { providers?: RegistryProvider[] };
   return json.providers ?? [];
+}
+
+export async function getRegistryProvider(id: string): Promise<RegistryProvider | null> {
+  const all = await readRegistry();
+  return all.find((p) => p.id === id) ?? null;
 }
 
 export interface InstalledProvider {

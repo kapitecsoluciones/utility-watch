@@ -7,8 +7,12 @@ import { getSetupState } from "../setup/state.ts";
 import { createFirstAdmin } from "../services/admin.ts";
 import { loadManifestFile } from "../plugins/validate.ts";
 import { readRegistry, listInstalled, installProvider } from "../services/providers.ts";
+import { createAccount, listAccounts } from "../services/accounts.ts";
+import { listBills, getBill } from "../services/bills.ts";
+import { executeRun } from "../runner/index.ts";
 import { migrationsDir } from "../paths.ts";
 import { join } from "node:path";
+import type { RowDataPacket } from "mysql2/promise";
 import type { AppConfig } from "../config/index.ts";
 
 function parseFlags(args: string[]): Record<string, string | boolean> {
@@ -198,6 +202,144 @@ async function cmdProvidersList(): Promise<number> {
   }
 }
 
+async function cmdAccountsCreate(flags: Record<string, string | boolean>): Promise<number> {
+  const providerId = String(flags.provider ?? "");
+  const name = String(flags.name ?? "");
+  if (!providerId || !name) {
+    process.stderr.write("Usage: utility-watch accounts:create --provider <id> --name <display> [--ref <ref>] [--secret <handle>] [--brightdata]\n");
+    return 2;
+  }
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    const id = await createAccount(pool, {
+      providerId,
+      displayName: name,
+      externalRef: typeof flags.ref === "string" ? flags.ref : undefined,
+      secretHandle: typeof flags.secret === "string" ? flags.secret : undefined,
+      brightdataAllowed: flags.brightdata === true,
+    });
+    process.stdout.write(`Created account ${id} for provider ${providerId}.\n`);
+    return 0;
+  } catch (e) {
+    process.stderr.write(`accounts:create failed: ${(e as Error).message}\n`);
+    return 1;
+  } finally {
+    await pool.end();
+  }
+}
+
+async function cmdAccountsList(): Promise<number> {
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    const accounts = await listAccounts(pool);
+    if (!accounts.length) process.stdout.write("No accounts. Create one: utility-watch accounts:create ...\n");
+    for (const a of accounts) {
+      process.stdout.write(`  #${a.id}  ${a.provider_id.padEnd(18)} ${a.display_name}${a.brightdata_allowed ? "  [brightData opt-in]" : ""}\n`);
+    }
+    return 0;
+  } finally {
+    await pool.end();
+  }
+}
+
+async function cmdRun(flags: Record<string, string | boolean>): Promise<number> {
+  const accountId = Number(flags.account ?? 0);
+  if (!accountId) {
+    process.stderr.write("Usage: utility-watch run --account <id>\n");
+    return 2;
+  }
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    const outcome = await executeRun(pool, {
+      accountId,
+      artifactsDir: config.artifactsDir,
+      confidenceThreshold: config.reviewConfidenceThreshold,
+    });
+    process.stdout.write(`${JSON.stringify(outcome, null, 2)}\n`);
+    return outcome.status === "failed" ? 1 : 0;
+  } catch (e) {
+    process.stderr.write(`run failed: ${(e as Error).message}\n`);
+    return 1;
+  } finally {
+    await pool.end();
+  }
+}
+
+async function cmdRunsShow(args: string[]): Promise<number> {
+  const id = Number(args[0] ?? 0);
+  if (!id) {
+    process.stderr.write("Usage: utility-watch runs:show <run-id>\n");
+    return 2;
+  }
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    const [runs] = await pool.query<RowDataPacket[]>("SELECT * FROM runs WHERE id = ?", [id]);
+    const run = runs[0];
+    if (!run) {
+      process.stderr.write(`run ${id} not found\n`);
+      return 1;
+    }
+    process.stdout.write(`Run #${run.id}  ${run.provider_id}  adapter=${run.adapter}  status=${run.status}\n`);
+    if (run.error_code) process.stdout.write(`  error: ${run.error_code} — ${run.error_message}\n`);
+    const [artifacts] = await pool.query<RowDataPacket[]>("SELECT type, path, sha256 FROM artifacts WHERE run_id = ?", [id]);
+    process.stdout.write(`  artifacts: ${artifacts.length}\n`);
+    for (const a of artifacts) process.stdout.write(`    - ${a.type} ${a.path} (sha256 ${String(a.sha256).slice(0, 12)}…)\n`);
+    const [logs] = await pool.query<RowDataPacket[]>("SELECT level, event, message FROM run_logs WHERE run_id = ? ORDER BY id", [id]);
+    process.stdout.write(`  log:\n`);
+    for (const l of logs) process.stdout.write(`    [${l.level}] ${l.event}: ${l.message}\n`);
+    return 0;
+  } finally {
+    await pool.end();
+  }
+}
+
+async function cmdBillsList(flags: Record<string, string | boolean>): Promise<number> {
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    const bills = await listBills(pool, {
+      status: typeof flags.status === "string" ? flags.status : undefined,
+      dueBefore: typeof flags["due-before"] === "string" ? (flags["due-before"] as string) : undefined,
+    });
+    if (!bills.length) process.stdout.write("No bills.\n");
+    for (const b of bills) {
+      process.stdout.write(
+        `  #${b.id}  ${b.provider_id.padEnd(16)} due ${b.due_date ?? "?"}  ${b.currency ?? ""} ${b.amount_due ?? "?"}  conf ${b.confidence_score ?? "?"}  ${b.status}\n`,
+      );
+    }
+    return 0;
+  } finally {
+    await pool.end();
+  }
+}
+
+async function cmdBillsShow(args: string[]): Promise<number> {
+  const id = Number(args[0] ?? 0);
+  if (!id) {
+    process.stderr.write("Usage: utility-watch bills:show <bill-id>\n");
+    return 2;
+  }
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    const bill = await getBill(pool, id);
+    if (!bill) {
+      process.stderr.write(`bill ${id} not found\n`);
+      return 1;
+    }
+    const normalized = typeof bill.normalized_json === "string" ? JSON.parse(bill.normalized_json) : bill.normalized_json;
+    process.stdout.write(`Bill #${bill.id}  status=${bill.status}  review=${bill.review_status ?? "n/a"}\n`);
+    process.stdout.write(`${JSON.stringify(normalized, null, 2)}\n`);
+    return 0;
+  } finally {
+    await pool.end();
+  }
+}
+
 function help(): number {
   process.stdout.write(
     [
@@ -213,6 +355,12 @@ function help(): number {
       "  providers:list        List registry providers and which are installed",
       "  providers:validate    Validate a plugin manifest (<dir | plugin.json>)",
       "  providers:install     Register a plugin into the database (<plugin-dir>)",
+      "  accounts:create       Create an account for a provider",
+      "  accounts:list         List configured accounts",
+      "  run                   Run a retrieval for an account (--account <id>)",
+      "  runs:show             Show a run with its artifacts and log (<run-id>)",
+      "  bills:list            List normalized bills (--status, --due-before)",
+      "  bills:show            Show a normalized bill (<bill-id>)",
       "",
     ].join("\n"),
   );
@@ -238,6 +386,18 @@ async function main(): Promise<number> {
       return cmdProvidersValidate(rest);
     case "providers:install":
       return cmdProvidersInstall(rest);
+    case "accounts:create":
+      return cmdAccountsCreate(flags);
+    case "accounts:list":
+      return cmdAccountsList();
+    case "run":
+      return cmdRun(flags);
+    case "runs:show":
+      return cmdRunsShow(rest);
+    case "bills:list":
+      return cmdBillsList(flags);
+    case "bills:show":
+      return cmdBillsShow(rest);
     case "setup:check":
       return cmdSetupCheck();
     case "setup":
