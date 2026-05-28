@@ -5,7 +5,10 @@ import { runMigrations, pendingMigrations } from "../db/migrate.ts";
 import { runDoctor } from "../doctor/index.ts";
 import { getSetupState } from "../setup/state.ts";
 import { createFirstAdmin } from "../services/admin.ts";
+import { loadManifestFile } from "../plugins/validate.ts";
+import { readRegistry, listInstalled, installProvider } from "../services/providers.ts";
 import { migrationsDir } from "../paths.ts";
+import { join } from "node:path";
 import type { AppConfig } from "../config/index.ts";
 
 function parseFlags(args: string[]): Record<string, string | boolean> {
@@ -132,6 +135,69 @@ async function cmdSetup(): Promise<number> {
   }
 }
 
+function manifestPathFrom(arg: string): string {
+  return arg.endsWith("plugin.json") ? arg : join(arg, "plugin.json");
+}
+
+async function cmdProvidersValidate(args: string[]): Promise<number> {
+  const target = args[0];
+  if (!target) {
+    process.stderr.write("Usage: utility-watch providers:validate <plugin-dir | plugin.json>\n");
+    return 2;
+  }
+  const res = await loadManifestFile(manifestPathFrom(target));
+  if (res.ok && res.manifest) {
+    process.stdout.write(`✓ valid manifest: ${res.manifest.id}@${res.manifest.version} (${res.manifest.name})\n`);
+    return 0;
+  }
+  process.stderr.write(`✗ invalid manifest:\n${res.errors.map((e) => `  - ${e}`).join("\n")}\n`);
+  return 1;
+}
+
+async function cmdProvidersInstall(args: string[]): Promise<number> {
+  const target = args[0];
+  if (!target) {
+    process.stderr.write("Usage: utility-watch providers:install <plugin-dir>\n");
+    return 2;
+  }
+  const res = await loadManifestFile(manifestPathFrom(target));
+  if (!res.ok || !res.manifest) {
+    process.stderr.write(`Refusing to install — invalid manifest:\n${res.errors.map((e) => `  - ${e}`).join("\n")}\n`);
+    return 1;
+  }
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    await installProvider(pool, res.manifest);
+    process.stdout.write(`Installed provider ${res.manifest.id}@${res.manifest.version} (status: ${res.manifest.quality.status}).\n`);
+    return 0;
+  } finally {
+    await pool.end();
+  }
+}
+
+async function cmdProvidersList(): Promise<number> {
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    const registry = await readRegistry();
+    let installedIds = new Set<string>();
+    try {
+      installedIds = new Set((await listInstalled(pool)).map((p) => p.id));
+    } catch {
+      // DB not migrated yet — show the registry only.
+    }
+    process.stdout.write("Providers (registry):\n");
+    for (const p of registry) {
+      const mark = installedIds.has(p.id) ? "[installed]" : "[          ]";
+      process.stdout.write(`  ${mark} ${p.id.padEnd(18)} ${p.serviceTypes.join(",").padEnd(20)} ${p.status}\n`);
+    }
+    return 0;
+  } finally {
+    await pool.end();
+  }
+}
+
 function help(): number {
   process.stdout.write(
     [
@@ -144,6 +210,9 @@ function help(): number {
       "  db:migrate            Apply pending migrations",
       "  admin:create          Create the first administrator",
       "  config:show           Print effective config (secrets redacted)",
+      "  providers:list        List registry providers and which are installed",
+      "  providers:validate    Validate a plugin manifest (<dir | plugin.json>)",
+      "  providers:install     Register a plugin into the database (<plugin-dir>)",
       "",
     ].join("\n"),
   );
@@ -163,6 +232,12 @@ async function main(): Promise<number> {
       return cmdAdminCreate(flags);
     case "config:show":
       return cmdConfigShow();
+    case "providers:list":
+      return cmdProvidersList();
+    case "providers:validate":
+      return cmdProvidersValidate(rest);
+    case "providers:install":
+      return cmdProvidersInstall(rest);
     case "setup:check":
       return cmdSetupCheck();
     case "setup":

@@ -2,6 +2,29 @@
   "schemaVersion": "uw-registry-v1",
   "providers": [
     {
+      "id": "mock-provider",
+      "name": "Mock Utility Provider",
+      "country": "US",
+      "serviceTypes": ["electricity"],
+      "status": "draft",
+      "verification": "fixture-only",
+      "package": "plugins/mock-provider",
+      "pluginVersion": "0.1.0",
+      "coreVersion": ">=0.1.0 <1.0.0",
+      "brightData": "unsupported",
+      "capabilities": [
+        "auth.login",
+        "bills.list",
+        "bills.download",
+        "bills.normalize",
+        "healthcheck.run"
+      ],
+      "knownLimitations": [
+        "Deterministic mock; not connected to a live provider portal"
+      ],
+      "maintainer": "Utility Watch Maintainers"
+    },
+    {
       "id": "example-provider",
       "name": "Example Utility Provider",
       "country": "US",
