@@ -1733,6 +1733,7 @@ Required docs before MVP demo:
 - `PLAN.md`: product and implementation plan.
 - `docs/platform-architecture.md`: core, plugin lifecycle, registry, hooks/events, permissions, and adapter architecture.
 - `docs/installation-and-onboarding.md`: install states, first-use wizard, first admin creation, roles, setup recovery, and provider onboarding.
+- `docs/perspective-review.md`: product, install, operator, security, plugin developer, registry, Bright Data, AI, open-source, hackathon, and maintenance gates.
 - `docs/public-private-boundary.md`: what can and cannot be public.
 - `docs/provider-submission-checklist.md`: provider quality gate.
 - `docs/plugin-contract.md`: manifest and lifecycle reference.
@@ -1795,7 +1796,9 @@ Recommended after MVP:
 
 ## 30. Perspective Review
 
-This section is the second-pass critique. It exists to keep the project balanced across product, engineering, security, demo quality, and open-source credibility.
+This section is the second-pass critique. It exists to keep the project balanced across product, installation, operations, engineering, security, demo quality, and open-source credibility.
+
+The full review matrix lives in `docs/perspective-review.md`. Implementation should use that document as a gate before starting broad provider coverage.
 
 ### Product Perspective
 
@@ -1812,6 +1815,22 @@ The core product is not bill scraping. The core product is provider lifecycle ma
 - update or deprecate provider
 
 The page, README, demo, and code should all reinforce that lifecycle. If the implementation only shows one scraper, the concept will look too small.
+
+### Installation Perspective
+
+The install path is part of the product, not a setup chore.
+
+Installation priorities:
+
+- clean clone to running system
+- Docker/MySQL local path
+- setup state detection
+- first administrator bootstrap
+- idempotent setup
+- setup endpoint lock after bootstrap
+- demo mode separated from private managed mode
+
+If setup feels unclear, the product will look unfinished even if the scraper demo works.
 
 ### Architecture Perspective
 
@@ -1874,6 +1893,36 @@ Business priorities:
 - Leave room for managed hosting, private registries, support, and premium provider maintenance later.
 - Do not put paid marketplace mechanics in the MVP.
 - Make the repo credible enough for customers to inspect and contributors to extend.
+
+### Registry Perspective
+
+The registry is the trust layer for provider scale.
+
+Registry priorities:
+
+- verification levels
+- known limitations
+- install source
+- maintainer contact
+- Bright Data requirement
+- fixture verification date
+- broken/deprecated states
+
+A provider should be understandable before a user installs it.
+
+### AI Perspective
+
+AI should improve maintenance and operator clarity without becoming the authority.
+
+AI priorities:
+
+- redacted run diagnosis
+- parser assistance from fixtures
+- provider health explanation
+- issue drafts for maintainers
+- no credential handling
+- no autonomous approval/export
+- no autonomous Bright Data spend
 
 ### Hackathon Perspective
 
