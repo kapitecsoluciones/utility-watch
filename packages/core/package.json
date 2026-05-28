@@ -1,0 +1,28 @@
+{
+  "name": "@utility-watch/core",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Utility Watch core runtime: CLI, config, database, setup, and the doctor health check.",
+  "type": "module",
+  "bin": {
+    "utility-watch": "src/cli/index.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "dev": "node --import tsx src/cli/index.ts",
+    "test": "node --import tsx --test src/config/config.test.ts src/auth/password.test.ts src/db/migrate.test.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "mysql2": "^3.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
