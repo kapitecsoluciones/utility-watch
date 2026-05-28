@@ -1,0 +1,15 @@
+{
+  "providerId": "mock-provider",
+  "accountRef": "DEMO-0001",
+  "statementDate": "2026-05-01",
+  "periodStart": "2026-04-01",
+  "periodEnd": "2026-04-30",
+  "dueDate": "2026-05-21",
+  "amountDue": 128.44,
+  "currency": "USD",
+  "confidence": 0.9,
+  "lineItems": [
+    { "label": "Electric usage", "amount": 100.12 },
+    { "label": "Taxes and fees", "amount": 28.32 }
+  ]
+}
