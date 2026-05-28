@@ -1,0 +1,8 @@
+{
+  "name": "@utility-watch/provider-example",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Synthetic example provider manifest (no live portal)."
+}
