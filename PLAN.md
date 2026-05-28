@@ -10,6 +10,8 @@ The project should not be a collection of scripts. It should be a stable retriev
 
 Utility Watch is an open plugin platform that turns utility provider portals into reusable bill retrieval connectors.
 
+Think of it as **"WordPress for utility bill retrieval"**: a self-installable platform with a stable core, installable provider plugins (the equivalent of WordPress's plugins/themes), first-class users, roles, and security, and a public registry of providers. On top of that familiar, installable architecture it is **agent-native** — the same core is exposed through an MCP server (the primary face for AI agents) and an HTTP API (for traditional integrations), not only a human dashboard. None of these surfaces excludes the others; they are thin heads over one service layer (§16).
+
 ### Product Thesis
 
 Utility bill retrieval is fragmented across provider portals, countries, login flows, bill formats, anti-bot systems, PDF layouts, and accounting workflows. Most teams solve this with one-off scrapers. Those scripts work until a portal changes, a provider adds friction, a customer asks for evidence, or a new market needs 20 more utilities.
@@ -1063,38 +1065,72 @@ Nice-to-have commands:
 - `utility-watch demo:seed`
 - `utility-watch users:list`
 
-## 16. API v0
+## 16. Agent-Native Interface (MCP) — Primary Face
 
-Minimal endpoints:
+Utility Watch is built for agents, not only people. The platform's primary interface in v0 is a **Model Context Protocol (MCP) server** so AI agents (Claude Code, ChatGPT, and others) can discover providers, trigger retrievals, query normalized bills, and pull fresh web data on demand — with full governance and audit.
 
-- `GET /health`
-- `GET /setup/status`
-- `POST /setup/complete`
-- `POST /auth/login`
-- `POST /auth/logout`
-- `GET /users`
-- `POST /users`
-- `GET /roles`
-- `GET /settings`
-- `PATCH /settings`
-- `GET /providers`
-- `GET /providers/:id`
-- `POST /providers/:id/install`
-- `POST /providers/:id/activate`
-- `POST /providers/:id/deactivate`
-- `GET /accounts`
-- `POST /accounts`
-- `POST /jobs`
-- `POST /jobs/:id/run`
-- `GET /runs/:id`
-- `GET /runs/:id/logs`
-- `GET /runs/:id/artifacts`
-- `GET /bills`
-- `GET /bills/:id`
-- `POST /bills/:id/review`
-- `POST /bills/:id/export`
+### One Service Layer, Three Heads
 
-API v0 is local/developer oriented. Hosted/public authentication is not an MVP goal, but first-admin bootstrap and role/capability modeling are MVP architecture requirements so the product does not need to be redesigned after the demo.
+All business logic lives in a single **service layer**. Transports are thin and stateless:
+
+```txt
+       CLI               MCP server            HTTP API
+    (human ops)        (AI agents) *         (integrations)
+       +--------------------+--------------------+
+                      Service layer
+   (providers - accounts - runs - bills - review - export - policy - audit)
+                            |
+                  MySQL  +  execution adapters (local / Bright Data)
+```
+
+All three heads are part of the platform — none excludes the others, and all call the same service layer. The **MCP server is the primary, agent-native face** (and the demo headline); the **CLI** handles human setup/ops; the **HTTP API** serves the dashboard and traditional integrations. The MCP calls the service layer directly, so it never depends on the API being up.
+
+Scope note for the 2-day hackathon: the plan describes the full platform (the "WordPress for utilities" vision). The demo proves the spine end-to-end through the **MCP path**; the HTTP API and dashboard are built to the breadth time allows, with the service layer making each surface a thin add.
+
+### MCP Tools
+
+Read and low-risk action tools (available to a standard agent token):
+
+- `list_providers` — registry cards: id, name, country, service type, status, Bright Data requirement.
+- `list_accounts` — configured accounts (no secret values).
+- `run_retrieval` (arg `account_id`) — start a retrieval job; returns `run_id` and initial status (async; the agent polls).
+- `get_run` (arg `run_id`) — status, adapter, adapter reason, error code, cost, artifact references.
+- `list_bills` (args `account?`, `status?`, `due_before?`) — query normalized bills; answers "what is due across the portfolio this week".
+- `get_bill` (arg `bill_id`) — normalized bill with evidence references and per-field confidence.
+- `diagnose_run` (arg `run_id`) — the AI run-diagnosis note from §10 (redacted inputs).
+
+Gated tools (require an explicit capability grant or human approval — see Governance):
+
+- `propose_review` — records an agent recommendation; does not finalize unless policy allows.
+- `export_bill` — only for approved bills and only with the `bills.export` capability.
+
+### MCP Resources
+
+- `registry://providers` — provider cards.
+- `bill://{id}` — normalized bill JSON.
+- `run://{id}/artifacts` — redacted artifact listing.
+
+### Agent Governance (agent-native is not agent-omnipotent)
+
+1. **Capability-scoped tokens.** Each agent connects with a token bound to a capability set (§5). The default agent token grants read + `jobs.run` + `runs.inspect` + `ai.diagnose`, but **not** `bills.review`, `bills.export`, `policies.manage`, or Bright Data enablement.
+2. **Fail-closed on costly or irreversible actions.** Agents may read everything, trigger retrievals within budget, and draft reviews. Approving an export, spending Bright Data above the cap, or enabling Bright Data requires a human or an explicit policy grant. This is §10's rule enforced at the transport.
+3. **Full audit with agent identity.** Every MCP tool call is written to the same audit trail as human actions, attributed to the agent token. "Who/what did this" is always answerable.
+4. **Token-efficient, typed outputs.** Tools return compact, stable JSON and artifact references (ids), never raw blobs, so agents do not exhaust their context window.
+
+### HTTP API
+
+The REST surface mirrors the service layer and shares the same capability-scoped auth as the MCP server. Core endpoints:
+
+- `GET /health`, `GET /setup/status`, `POST /setup/complete`
+- `POST /auth/login`, `POST /auth/logout`
+- `GET /providers`, `GET /providers/:id`, `POST /providers/:id/{install,activate,deactivate}`
+- `GET /accounts`, `POST /accounts`
+- `POST /jobs`, `POST /jobs/:id/run`
+- `GET /runs/:id`, `GET /runs/:id/logs`, `GET /runs/:id/artifacts`
+- `GET /bills`, `GET /bills/:id`, `POST /bills/:id/review`, `POST /bills/:id/export`
+- `GET /users`, `POST /users`, `GET /roles`, `GET /settings`, `PATCH /settings`
+
+The API powers the dashboard and external integrations. Because every head calls the same service layer, the API, MCP, and CLI cannot drift apart. For the 2-day demo the API is built to the breadth time allows after the MCP path works; the full surface is the product target, not excluded.
 
 ## 17. Registry And Plugin Governance
 
@@ -1624,7 +1660,10 @@ Mitigation: require fixture tests, parser tests, declared limitations, verificat
 
 - **Project name:** Utility Watch (public). "Utilitual" retired.
 - **Hackathon demo providers:** mock provider + two real providers — `sce-us` (Southern California Edison, electricity, Okta login) and `socalgas-us` (SoCalGas, gas, React SPA). Two distinct portal patterns prove the plugin model generalizes; the remaining real providers ship as registry entries in `planned` status (see §22).
-- **Bright Data product:** the **Scraping Browser** is the v0 adapter (`brightdata-scraping-browser`). Web Unlocker / SERP / MCP are documented as later adapter options only.
+- **Bright Data product:** the **Scraping Browser** is the v0 adapter (`brightdata-scraping-browser`). Web Unlocker / SERP / Bright Data MCP are documented as later adapter options only.
+- **Primary interface:** the **MCP server is the primary face** of the platform and the star of the demo (agent-native; see §16). The CLI is the secondary, human-operator interface.
+- **Transport architecture:** one service layer with three thin heads (CLI, MCP, HTTP API) — none excludes the others. Build order is service layer → MCP (primary, demo headline) → HTTP API + dashboard, all reusing the same service layer. The MCP calls the service layer directly so it never depends on the API.
+- **Agent authorization:** capability-scoped agent tokens reusing the §5 model; fail-closed on export, review finalization, and Bright Data spend/enablement.
 - **v0 dashboard:** generated HTML run report first; full web app later.
 - **Plugin location:** monorepo plugins under `plugins/` for v0; external package support later.
 - **Registry:** static JSON in-repo for v0; hosted/package registry later.
