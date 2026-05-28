@@ -6,15 +6,29 @@ on:
   pull_request:
 
 jobs:
-  placeholder:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate repository scaffold
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run -w @utility-watch/core typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Plugin fixture tests
+        run: npm run -w @utility-watch/provider-mock test:plugin
+      - name: Validate registry + manifests are JSON
         run: |
-          test -f README.md
-          test -f PLAN.md
-          test -f LICENSE
-          test -f plugins/example-provider/plugin.json
-          test -f registry/providers.json
-
+          node -e "JSON.parse(require('fs').readFileSync('registry/providers.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('plugins/example-provider/plugin.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('plugins/mock-provider/plugin.json','utf8'))"
+      - name: No prohibited private terms
+        run: |
+          ! grep -rinwE 'client|client|propertya|propertyb|a prior system' \
+            --include='*.ts' --include='*.json' --include='*.md' --include='*.txt' \
+            --exclude-dir=node_modules .
