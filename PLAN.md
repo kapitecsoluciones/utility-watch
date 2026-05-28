@@ -190,6 +190,18 @@ The MVP is done only when all of these are true:
 
 ## 5. MVP Scope
 
+### Toolchain (Pinned For v0)
+
+A pinned toolchain is part of the "clone to demo in under 15 minutes" promise (§4). v0 targets:
+
+- **Node.js 22 LTS** (declared via `.nvmrc` and `engines` in `package.json`).
+- **Package manager: npm** (lockfile committed). No pnpm/yarn in v0 to keep contributor setup trivial.
+- **TypeScript 5.x**, strict mode.
+- **MySQL 8** via Docker Compose.
+- **Migrations:** a single lightweight SQL-file migration runner invoked by `utility-watch db:migrate` (no heavy ORM in v0; Knex or `node-pg-migrate`-style plain SQL).
+- **Browser automation:** Playwright (local adapter) and the Bright Data Scraping Browser (remote adapter) through the same interface.
+- **Tests:** Node's built-in test runner or Vitest; fixture tests must run without a browser or live credentials.
+
 ### In Scope
 
 - Node.js and TypeScript core.
@@ -205,7 +217,7 @@ The MVP is done only when all of these are true:
 - Structured logs with redaction.
 - Local Playwright execution adapter.
 - Bright Data execution adapter interface.
-- Bright Data browser/unlocker implementation behind explicit opt-in.
+- Bright Data Scraping Browser implementation behind explicit opt-in.
 - Mock provider plugin.
 - One normal-provider demo using synthetic or safely sanitized fixtures.
 - One blocked-provider demo path showing Bright Data escalation.
@@ -465,6 +477,7 @@ This avoids baking admin-only assumptions into the core.
 
 9. **Export Layer**
    - Produces JSON v0.
+   - v0 destination: writes a deterministic JSON file under the configured exports directory (`<data>/exports/<bill-id>.json`) and echoes the same payload to stdout for the CLI; an `exports` row records format, payload, destination, and status. No external accounting side effects in v0.
    - Later maps to accounting systems.
 
 ### Module Responsibility Matrix
@@ -528,73 +541,97 @@ docs/
 
 ### Manifest
 
-Each plugin must include `plugin.json`.
+Each plugin must include `plugin.json`. The authoritative manifest specification is [`docs/plugin-contract.md`](./docs/plugin-contract.md) §3 (schema `uw-plugin-v1`); this section is a summary and must not diverge from it or from the committed `plugins/example-provider/plugin.json`.
 
-Required fields:
+Required fields (`uw-plugin-v1`):
 
-- `id`: stable provider ID, for example `sce-us`.
+- `id`: stable lowercase provider ID, for example `sce-us`.
 - `name`: human-readable provider name.
-- `version`: semantic version.
+- `version`: semantic plugin version.
+- `license`: plugin license.
+- `schemaVersion`: manifest schema version (`uw-plugin-v1`).
+- `coreVersion`: compatible core version range.
 - `country`: ISO country code.
-- `utilityTypes`: electricity, gas, water, waste, internet, telecom, other.
+- `serviceTypes`: utility categories (electricity, gas, water, waste, internet, telecom, other).
+- `homepage`: provider or plugin homepage.
 - `entrypoint`: compiled plugin entrypoint.
-- `domains`: allowed domains.
-- `permissions`: browser, network, fileDownload, pdfRead, brightData, etc.
-- `secrets`: required secret handles, not values.
-- `execution`: supported adapters and default adapter.
-- `artifacts`: artifact types the plugin may produce.
-- `limitations`: known limitations, MFA notes, unsupported account types.
-- `maintainer`: maintainer metadata.
+- `capabilities`: declared operations (`auth.login`, `accounts.list`, `bills.list`, `bills.download`, `bills.normalize`, ...).
+- `auth`: authentication shape (`type`, `secretRefs` — handles, never values).
+- `permissions`: requested runtime permissions (`network` allowed domains, `artifacts` types, `filesystem` scope, `brightData` mode).
+- `quality`: verification and maintenance metadata (`status`, `verification`, `lastVerified`, `limitations`).
+- `tests`: fixture path and healthcheck command.
+- `support`: maintainer and issue metadata.
 
-Example:
+Example (matches the committed `example-provider`):
 
 ```json
 {
-  "id": "example-electric-us",
-  "name": "Example Electric",
+  "id": "sce-us",
+  "name": "Southern California Edison",
   "version": "0.1.0",
+  "license": "Apache-2.0",
+  "schemaVersion": "uw-plugin-v1",
+  "coreVersion": ">=0.1.0 <1.0.0",
   "country": "US",
-  "utilityTypes": ["electricity"],
-  "entrypoint": "dist/index.js",
-  "domains": ["example.test"],
-  "permissions": ["browser", "fileDownload", "pdfRead"],
-  "secrets": [
-    { "name": "username", "type": "string", "required": true },
-    { "name": "password", "type": "password", "required": true }
+  "serviceTypes": ["electricity"],
+  "homepage": "https://www.sce.com",
+  "entrypoint": "./dist/index.js",
+  "capabilities": [
+    "auth.login",
+    "accounts.list",
+    "bills.list",
+    "bills.download",
+    "bills.normalize"
   ],
-  "execution": {
-    "defaultAdapter": "local-playwright",
-    "allowedAdapters": ["local-playwright", "brightdata-browser"],
-    "brightData": {
-      "allowed": false,
-      "requiresExplicitAccountOptIn": true
-    }
+  "auth": {
+    "type": "username-password",
+    "secretRefs": ["username", "password"]
   },
-  "artifacts": ["screenshot", "html", "pdf"],
-  "limitations": ["Synthetic demo provider only"],
-  "maintainer": {
-    "name": "Utility Watch",
-    "url": "https://github.com/kapitecsoluciones/utility-watch"
+  "permissions": {
+    "network": ["sce.com", "*.sce.com"],
+    "artifacts": ["html", "pdf", "screenshot", "json"],
+    "filesystem": "artifacts-only",
+    "brightData": "supported"
+  },
+  "quality": {
+    "status": "draft",
+    "verification": "fixture-only",
+    "lastVerified": null,
+    "limitations": [
+      "MFA challenges route to human review",
+      "Synthetic fixtures only in the public repo"
+    ]
+  },
+  "tests": {
+    "fixtures": "./fixtures",
+    "healthcheck": "npm run test:plugin"
+  },
+  "support": {
+    "maintainer": "Utility Watch Maintainers",
+    "url": "https://github.com/kapitecsoluciones/utility-watch/issues"
   }
 }
 ```
 
-### Required Lifecycle Methods
+### Lifecycle Methods
 
-- `healthcheck(context)`
-- `login(context, credentials)`
-- `listAccounts(context)`
-- `fetchBills(context, account)`
-- `normalizeBill(context, rawBill)`
-- `validateBill(context, normalizedBill)`
+The TypeScript lifecycle interface is defined in [`docs/plugin-contract.md`](./docs/plugin-contract.md) §5. Method names must match that contract exactly:
 
-### Optional Lifecycle Methods
+- `healthcheck(ctx)`
+- `login(ctx)`
+- `listAccounts(ctx)`
+- `listBills(ctx, account)`
+- `downloadBill(ctx, bill)`
+- `normalizeBill(ctx, artifact)`
 
-- `beforeRun(context)`
-- `afterRun(context)`
-- `onBlocked(context, error)`
-- `onPortalChanged(context, evidence)`
-- `exportBill(context, bill)`
+The MVP may implement only the methods a given provider needs, but the names above are the contract. (Earlier drafts used `fetchBills`/`validateBill`; those names are retired — `listBills` + `downloadBill` replace `fetchBills`, and validation is part of `normalizeBill` and the core review layer, not a separate plugin method.)
+
+### Optional Hooks
+
+- `beforeRun(ctx)`
+- `afterRun(ctx)`
+- `onBlocked(ctx, error)`
+- `onPortalChanged(ctx, evidence)`
 
 ### Plugin Rules
 
@@ -620,13 +657,16 @@ Responsibilities:
 - Expose a controlled browser/page interface to plugins.
 - Enforce declared domains where feasible.
 
-### `brightdata-browser`
+### `brightdata-scraping-browser`
 
-Adapter for blocked, geo-sensitive, or JavaScript-heavy portals.
+The chosen Bright Data product for v0 is the **Scraping Browser** (a remote, Playwright-compatible browser on Bright Data infrastructure). It is the adapter for JavaScript-heavy single-page portals, portals that require a stable US residential vantage point, and reliable execution across many providers at scale.
+
+This adapter is **not** a captcha or MFA bypass. Utility portals like Southern California Edison (Okta-based login) and SoCalGas (React SPA) are demanding because of heavy client-side JavaScript, session/geo sensitivity, and the operational cost of keeping many portals working at once — not because we defeat human-verification steps. MFA and captcha always route to `auth.mfa_required` / human review.
 
 Responsibilities:
 
 - Use Bright Data only when plugin and account policy permit it.
+- Drive the remote browser through the same adapter interface as `local-playwright`, so provider plugins are adapter-agnostic.
 - Record Bright Data usage by run.
 - Enforce per-run and per-provider budget limits.
 - Store adapter selection reason.
@@ -935,6 +975,19 @@ Example:
 }
 ```
 
+### Confidence Scoring v0
+
+Confidence is deterministic in v0 — no model, no heuristics that cannot be explained. It is a per-field score combined into an overall score, so a reviewer can always see why a bill needs review.
+
+Per-field score is assigned by extraction method:
+
+- `1.0` — value came from a structured source (intercepted JSON API, labeled table cell).
+- `0.9` — value parsed from PDF text with an anchored label match.
+- `0.7` — value parsed by a looser positional/regex fallback.
+- `0.0` — required field missing.
+
+Overall `confidence` is the minimum of the required-field scores (`amountDue`, `dueDate`, `statementDate`). A bill scoring below the configured threshold (default `0.85`) is created with status `needs_review` and error `bill.low_confidence`; it cannot be exported until a human approves it. Mock and fixture providers set scores explicitly so tests are deterministic.
+
 ## 13. Run States
 
 ### Job-Level States
@@ -964,18 +1017,9 @@ Example:
 
 ## 14. Error Taxonomy
 
-- `AUTH_INVALID`: credentials rejected.
-- `MFA_REQUIRED`: human MFA step required.
-- `CAPTCHA_REQUIRED`: captcha encountered.
-- `PORTAL_CHANGED`: expected UI or response changed.
-- `NETWORK_BLOCKED`: network or IP access blocked.
-- `RATE_LIMITED`: provider throttled execution.
-- `PDF_PARSE_FAILED`: bill file was found but parsing failed.
-- `NO_BILL_FOUND`: login worked but no bill was available.
-- `LOW_CONFIDENCE`: normalized fields did not meet confidence threshold.
-- `ARTIFACT_MISSING`: expected screenshot/PDF/HTML artifact missing.
-- `POLICY_BLOCKED`: account or provider policy disallowed action.
-- `UNKNOWN`: fallback for unclassified failures.
+The canonical error taxonomy is defined once in [`docs/plugin-contract.md`](./docs/plugin-contract.md) §7 and must not be duplicated or forked here. Plugins and the runner map every failure to one of those dotted, lowercase codes (for example `auth.invalid_credentials`, `auth.mfa_required`, `portal.layout_changed`, `portal.blocked`, `portal.timeout`, `portal.rate_limited`, `provider.unsupported_account`, `bill.not_found`, `bill.parse_failed`, `bill.low_confidence`, `policy.denied`, `adapter.failed`, `artifact.missing`, `error.unknown`).
+
+`auth.mfa_required` always routes to human action (the run enters `needs_review`); the platform never attempts to defeat MFA or captcha automatically.
 
 Each error must include:
 
@@ -1173,9 +1217,15 @@ The MVP threat model should be explicit even if sandboxing is not fully mature.
 
 ## 19. Hackathon Demo Plan
 
+### Hackathon Track: Finance & Market Intelligence
+
+Utility Watch is submitted under **Finance & Market Intelligence**. The framing is not "we scrape bills" — it is **utility cost intelligence across a property portfolio**: turning data locked behind fragmented utility portals into evidence-backed, auditable, exportable financial records (accounts payable, due-date tracking, cost normalization across electricity, gas, water, waste, and telecom). Bright Data is the live-web data layer that makes this work reliably across many portals; the output is structured financial data, reviewed and ready for accounting.
+
+To qualify for the Bright Data partner prize, the Scraping Browser adapter is integrated into this Finance & Market Intelligence submission as the execution path for JS-heavy, geo-sensitive portals.
+
 ### Demo Story
 
-"A property operator needs recurring bills from many fragmented utility portals. Instead of writing one-off scripts, they install provider plugins into Utility Watch. The core runs the provider, stores evidence, normalizes the bill, routes uncertain data to review, and exports approved JSON. When a portal blocks normal browser execution, the same plugin can escalate to Bright Data under explicit budget and policy controls."
+"A team manages utility accounts across a portfolio of properties, with bills spread across many fragmented provider portals (electricity, gas, water, waste). Instead of one-off scripts, they install provider plugins into Utility Watch. The core runs each provider, stores evidence, normalizes the bill into a financial record, routes uncertain data to review, and exports approved JSON for accounting. When a portal is a heavy JavaScript app or needs a stable US vantage point, the same plugin runs through the Bright Data Scraping Browser under explicit budget and policy controls."
 
 ### Demo Flow
 
@@ -1214,11 +1264,11 @@ The MVP threat model should be explicit even if sandboxing is not fully mature.
 
 The hackathon story should be simple:
 
-1. The web has valuable operational data locked behind fragmented provider portals.
-2. One-off scrapers are hard to maintain and hard to trust.
+1. Valuable financial data — utility costs across a property portfolio — is locked behind fragmented provider portals.
+2. One-off scrapers are hard to maintain and hard to trust, especially when accounting depends on the numbers.
 3. Utility Watch turns portal automation into installable, reviewable, governed plugins.
-4. Bright Data makes the architecture viable for blocked or high-friction portals.
-5. The output is not just scraped data; it is evidence-backed bill data ready for review and export.
+4. The Bright Data Scraping Browser makes the architecture viable for JS-heavy, geo-sensitive portals at portfolio scale.
+5. The output is not just scraped data; it is evidence-backed, normalized bill data ready for review and accounting export.
 
 ### Demo Scorecard
 
@@ -1234,6 +1284,24 @@ The demo should make these points visible without explanation-heavy slides:
 ## 20. Milestone Plan
 
 The milestone order is intentional. Do not start provider volume, marketplace polish, or live portal coverage before the vertical slice exists.
+
+### Effort Estimate (agent-hours)
+
+Rough build effort, in agent-hours of focused work (not calendar days):
+
+| Milestone | Estimate |
+|---|---|
+| M0 Repository Foundation | ~0.5h (mostly done) |
+| M1 Core Skeleton | 6–8h |
+| M2 Plugin Loader | 3–4h |
+| M3 Runner & Artifacts | 4–6h |
+| M4 Bill Normalization & Review | 3–4h |
+| M5 Bright Data Scraping Browser adapter | 3–5h |
+| M6 Registry v0 | ~2h |
+| M7 Demo Package | 3–4h |
+| `sce-us` + `socalgas-us` real plugins | 6–10h |
+
+Core platform (M1–M7) lands in ~24–33h; the two real providers add 6–10h. **Schedule risk lives almost entirely in the two live providers** (login flows, MFA handling, parser robustness against real portals) — the mock-based vertical slice is the safe path and must work first so there is always a demoable build. With a ~2-day submission window, the platform is feasible; treat live-provider polish as the cut line if time runs short.
 
 ### Dependency Map
 
@@ -1453,29 +1521,46 @@ A milestone is done when:
 - Artifact retention is documented.
 - Bright Data spend is visible per run and can be capped.
 
-## 22. First Provider Candidates
+## 22. Provider Roadmap
 
-Recommended sequence:
+Utility Watch is not a hypothetical platform: it is the open implementation of a real, multi-portal bill-retrieval need across a US (California) property portfolio. The registry roadmap below is that real provider set. This is what makes the plugin model credible — the fragmentation problem is concrete, not invented for a demo.
 
-1. **Mock Provider**
-   - deterministic
-   - no external dependencies
-   - best for docs and tests
+### Build Sequence
 
-2. **Synthetic Normal Provider**
-   - browser flow against controlled local/static demo portal
-   - proves plugin lifecycle without live risk
+1. **Mock provider** — deterministic, no external dependencies, best for docs and tests.
+2. **`sce-us` (Southern California Edison, electricity)** — first real provider. Username/password + Okta login, JS-heavy portal, an interceptable internal billing API. The most battle-tested pattern and the strongest case for the Scraping Browser adapter.
+3. **`socalgas-us` (SoCalGas, gas)** — second real provider. React SPA where amounts are resolved through network API interception. A deliberately different shape from SCE, to prove the contract generalizes.
+4. Remaining providers below ship incrementally as plugins, each landing in the registry with an honest verification level.
 
-3. **Sanitized Real-Pattern Provider**
-   - derived from general utility portal patterns
-   - uses synthetic fixtures
-   - proves parser and normalization realism
+### Production Registry Roadmap
 
-4. **Blocked-Provider Demo**
-   - safe public or synthetic target that demonstrates adapter escalation
-   - uses Bright Data with explicit budget controls
+| Plugin ID | Provider | Service | Status |
+|---|---|---|---|
+| `sce-us` | Southern California Edison | electricity | demo (draft) |
+| `socalgas-us` | SoCalGas | gas | demo (draft) |
+| `sdge-us` | San Diego Gas & Electric | electricity, gas | planned |
+| `ladwp-us` | LA Dept. of Water and Power | electricity, water | planned |
+| `cvwd-us` | Coachella Valley Water District | water | planned |
+| `fontana-water-us` | Fontana Water | water | planned |
+| `athens-us` | Athens Services | waste | planned |
+| `burrtec-us` | Burrtec | waste | planned |
+| `riverside-us` | City of Riverside utilities | water, waste | planned |
+| `ontario-us` | City of Ontario CA utilities | water, waste | planned |
+| `victorville-us` | City of Victorville utilities | water, waste | planned |
+| `redlands-us` | City of Redlands utilities | water | planned |
+| `longbeach-us` | City of Long Beach utilities | water, waste | planned |
+| `spectrum-us` | Spectrum | internet, telecom | planned |
 
-Long-term provider examples may include electricity, gas, water, waste, internet, and telecom utilities across countries, but MVP should avoid promising coverage before plugins exist.
+A recurring secondary pattern is the **billing aggregator** (one login fronting many municipal accounts). It will be modeled as its own plugin shape once the two demo providers are stable.
+
+### Boundary Discipline (non-negotiable)
+
+These public plugins are clean reimplementations, not copied private code. Per §2 and the project `CLAUDE.md`:
+
+- Public artifacts: provider names (public utilities), domains, and rewritten technical patterns only.
+- Never public: customer/property identifiers, real account numbers, real amounts or due dates, credentials, session data, or any production fixture. Public fixtures are synthetic.
+
+Long-term, additional providers across more service types and countries can be added by contributors, but the MVP does not promise coverage before a plugin exists and is verified.
 
 ## 23. Risks
 
@@ -1533,33 +1618,27 @@ Risk: low-quality plugins enter the registry and make the platform look unreliab
 
 Mitigation: require fixture tests, parser tests, declared limitations, verification levels, and broken/deprecated statuses.
 
-## 24. Open Decisions
+## 24. Decisions
 
-- Final project name: Utility Watch vs Utilitual.
-- First non-mock provider for public demo.
-- Whether v0 dashboard should be an HTML report or a small web app.
-- Whether plugin packages live in monorepo for v0 or separate repos.
-- How strict plugin sandboxing must be before external contributors.
-- Whether registry should remain static JSON or move to package metadata.
+### Resolved For v0
+
+- **Project name:** Utility Watch (public). "Utilitual" retired.
+- **Hackathon demo providers:** mock provider + two real providers — `sce-us` (Southern California Edison, electricity, Okta login) and `socalgas-us` (SoCalGas, gas, React SPA). Two distinct portal patterns prove the plugin model generalizes; the remaining real providers ship as registry entries in `planned` status (see §22).
+- **Bright Data product:** the **Scraping Browser** is the v0 adapter (`brightdata-scraping-browser`). Web Unlocker / SERP / MCP are documented as later adapter options only.
+- **v0 dashboard:** generated HTML run report first; full web app later.
+- **Plugin location:** monorepo plugins under `plugins/` for v0; external package support later.
+- **Registry:** static JSON in-repo for v0; hosted/package registry later.
+- **Private plugins:** supported as a documented deployment pattern; no private registry mechanics in the MVP.
+- **Browser access:** plugins receive adapter-provided browser capabilities; they never construct a browser or call Bright Data directly.
+- **AI/OCR parsing:** optional and policy-gated; deterministic parsers are the first path.
+
+### Still Open (do not block the MVP)
+
+- How strict plugin sandboxing must be before accepting external community plugins.
 - Whether managed deployments should support private registries in v1.
-- Which Bright Data product should be the default adapter for hackathon demo: browser, unlocker, SERP, or MCP.
-- Whether plugin publishing should use npm packages, registry manifests, git subdirectories, or a hybrid model.
-- Whether the core should support private plugins in v0 or document them as a deployment pattern only.
-- Whether browser automation should be allowed inside plugins directly or only through adapter-provided capabilities.
-- Whether OCR/LLM parsing belongs in core as an optional parser adapter or remains provider-specific until v1.
+- Final plugin publishing mechanism (npm packages vs registry manifests vs git subdirectories vs hybrid) once external contribution opens.
 
-### Decision Biases For v0
-
-Until there is evidence to choose otherwise, use these defaults:
-
-- Project name: keep **Utility Watch** for public clarity; keep **Utilitual** as an optional internal codename only.
-- Dashboard: start with a generated HTML report before building a full web app.
-- Plugin location: monorepo plugins for v0; allow external package support later.
-- Registry: static JSON for v0; hosted/package registry later.
-- Private plugins: support the deployment pattern through docs, but do not build private registry mechanics in MVP.
-- Browser access: plugins receive adapter-provided browser capabilities; they should not create browsers directly.
-- AI/OCR parsing: keep optional and policy-gated; deterministic parsers remain the first path.
-- Bright Data product: prefer browser adapter for the visible demo, document unlocker/SERP/MCP as later adapter options.
+All v0 defaults are now captured under "Resolved For v0" above. The remaining open items are listed under "Still Open"; they do not block the MVP.
 
 ## 25. Delivery Tracks
 
