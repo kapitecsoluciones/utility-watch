@@ -1,0 +1,23 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: utility-watch-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-utility_watch}
+      MYSQL_USER: ${MYSQL_USER:-utility_watch}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-utility_watch}
+    command: --default-authentication-plugin=caching_sha2_password
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - utility_watch_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  utility_watch_mysql:
