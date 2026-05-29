@@ -3,6 +3,7 @@ import type { IncomingMessage } from "node:http";
 import { randomUUID } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildMcpServer, type McpDeps } from "./server.ts";
+import { renderDashboard } from "./dashboard.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -43,6 +44,12 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
       if (req.method === "GET" && req.url === "/health") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, service: "utility-watch-mcp", version: "0.1.0" }));
+        return;
+      }
+      if (req.method === "GET" && (req.url === "/" || req.url === "/dashboard")) {
+        const html = await renderDashboard(deps.pool);
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(html);
         return;
       }
       if (!req.url || !req.url.startsWith("/mcp")) {
