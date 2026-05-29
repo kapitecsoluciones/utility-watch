@@ -17,7 +17,7 @@ import { reportSummary } from "../services/reports.ts";
 import { loadManifestFile, validateManifest } from "../plugins/validate.ts";
 import { logAudit, listAudit } from "../services/audit.ts";
 import { listProperties, createProperty } from "../services/properties.ts";
-import { listObligations, getObligation, setObligationMeta, financialKpis, providerHealth } from "../services/obligations.ts";
+import { listObligations, getObligation, setObligationMeta, financialKpis, providerHealth, trends } from "../services/obligations.ts";
 import { addPayment } from "../services/payments.ts";
 import { repoRoot, coreRoot } from "../paths.ts";
 import { join, resolve } from "node:path";
@@ -209,6 +209,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
           }
           if (path === "/api/kpis") return json(res, 200, await financialKpis(deps.pool, new Date().toISOString().slice(0, 10)));
           if (path === "/api/health") return json(res, 200, await providerHealth(deps.pool));
+          if (path === "/api/trends") return json(res, 200, await trends(deps.pool));
           if (path === "/api/properties") return json(res, 200, await listProperties(deps.pool));
           if (path === "/api/obligations") {
             const q = new URL(url, "http://x").searchParams;

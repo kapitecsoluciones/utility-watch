@@ -196,6 +196,21 @@ export async function financialKpis(pool: Pool, today: string) {
   };
 }
 
+/** Trend data: payments by month + currently-owed by category. */
+export async function trends(pool: Pool) {
+  const [pm] = await pool.query<RowDataPacket[]>(
+    "SELECT DATE_FORMAT(payment_date,'%Y-%m') ym, ROUND(SUM(amount),2) total FROM payments GROUP BY ym ORDER BY ym DESC LIMIT 12",
+  );
+  const paymentsByMonth = pm.map((r) => ({ ym: r.ym, total: Number(r.total) })).reverse();
+  const [oc] = await pool.query<RowDataPacket[]>(
+    `SELECT COALESCE(pr.utility_type,'other') cat, ROUND(SUM(o.current_balance),2) total
+     FROM obligations o LEFT JOIN providers pr ON o.provider_id = pr.id
+     WHERE o.is_cancelled = 0 AND o.current_balance > 0 GROUP BY cat ORDER BY total DESC`,
+  );
+  const owedByCategory = oc.map((r) => ({ category: r.cat, total: Number(r.total) }));
+  return { paymentsByMonth, owedByCategory };
+}
+
 /** Per-provider scraper health: last run, last success, failures, latest status, accounts. */
 export async function providerHealth(pool: Pool) {
   const [agg] = await pool.query<RowDataPacket[]>(

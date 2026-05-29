@@ -20,6 +20,7 @@ const SHELL = `<!doctype html>
 <title>Utility Watch — Console</title>
 <link rel="icon" href="/logo.png?v=2">
 <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   body{background:#ffffff;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0}
@@ -76,7 +77,7 @@ function renderLogin(){
   document.getElementById('password').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('loginBtn').click(); });
 }
 
-const SECTIONS = [['overview','Overview'],['properties','Properties'],['obligations','Accounts & balances'],['alerts','Alerts'],['health','Scraper health'],['providers','Providers'],['accounts','Logins'],['bills','Bills'],['history','History'],['users','Users'],['audit','Audit'],['reports','Reports']];
+const SECTIONS = [['overview','Overview'],['properties','Properties'],['obligations','Accounts & balances'],['alerts','Alerts'],['health','Scraper health'],['trends','Trends'],['calendar','Calendar'],['providers','Providers'],['accounts','Logins'],['bills','Bills'],['history','History'],['users','Users'],['audit','Audit'],['reports','Reports']];
 
 function renderApp(){
   const app=document.getElementById('app'); app.replaceChildren();
@@ -108,6 +109,8 @@ async function show(id){
     if(id==='obligations'){ main.innerHTML = await viewObligations(); bindObligations(); return; }
     if(id==='alerts'){ main.innerHTML = await viewAlerts(); bindObligations(); return; }
     if(id==='health'){ main.innerHTML = await viewHealth(); return; }
+    if(id==='trends'){ main.innerHTML = await viewTrends(); await bindTrends(); return; }
+    if(id==='calendar'){ main.innerHTML = await viewCalendar(); bindCalendar(); return; }
     if(id==='audit'){ main.innerHTML = await viewAudit(); return; }
     if(id==='reports'){ main.innerHTML = await viewReports(); return; }
   }catch(e){ main.innerHTML = '<div class="text-red-600">'+esc(e.message)+'</div>'; }
@@ -204,6 +207,39 @@ function bindUsers(){
 
 function oblPill(s){ var c=({overdue:'#b91c1c',due:'#b45309',paid:'#047857',arrangement:'#0e7490',cancelled:'#64748b',unknown:'#94a3b8'})[s]||'#64748b'; return '<span class="pill" style="color:'+c+';border-color:'+c+'55">'+esc(s)+'</span>'; }
 function oblBadges(o){ var b=''; if(+o.is_autopay) b+=' <span class="pill" title="On autopay — do not pay manually" style="color:#0e7490;border-color:#0891b255">🔁 auto</span>'; if(+o.paid_by_tenant) b+=' <span class="pill" title="Paid by tenant" style="color:#475569;border-color:#94a3b855">👤 tenant</span>'; if(+o.is_payment_arrangement) b+=' <span class="pill" title="Payment arrangement" style="color:#b45309;border-color:#b4530955">plan</span>'; return b; }
+
+async function viewTrends(){
+  return panel('Trends','<div class="grid grid-cols-2 gap-4"><div class="card p-4"><div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Payments by month</div><canvas id="ch-pay" height="150"></canvas></div><div class="card p-4"><div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Currently owed by category</div><canvas id="ch-cat" height="150"></canvas></div></div>');
+}
+async function bindTrends(){
+  let d; try{ d=await api('/api/trends'); }catch(e){ return; }
+  if(!window.Chart) return;
+  const pc=document.getElementById('ch-pay'); if(pc) new Chart(pc,{type:'bar',data:{labels:d.paymentsByMonth.map(x=>x.ym),datasets:[{label:'Paid',data:d.paymentsByMonth.map(x=>x.total),backgroundColor:'#0891b2'}]},options:{responsive:true,plugins:{legend:{display:false}}}});
+  const cc=document.getElementById('ch-cat'); if(cc) new Chart(cc,{type:'doughnut',data:{labels:d.owedByCategory.map(x=>x.category),datasets:[{data:d.owedByCategory.map(x=>x.total),backgroundColor:['#0891b2','#b45309','#047857','#7c3aed','#b91c1c','#64748b','#0e7490']}]},options:{responsive:true}});
+}
+
+async function viewCalendar(){
+  const obs = await api('/api/obligations');
+  const now=new Date(); const ym = window.__calYM || (now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'));
+  const parts=ym.split('-'); const Y=Number(parts[0]); const M=Number(parts[1]);
+  const startDow=new Date(Y,M-1,1).getDay(); const days=new Date(Y,M,0).getDate();
+  const byDay={};
+  obs.forEach(o=>{ var d=null; if(o.due_day&&o.due_day>=1&&o.due_day<=31) d=o.due_day; else if(o.current_due_date){ const cd=String(o.current_due_date); if(cd.slice(0,7)===ym) d=Number(cd.slice(8,10)); } if(d&&Number(o.current_balance)>0){ (byDay[d]=byDay[d]||[]).push(o); } });
+  var cells=''; for(var i=0;i<startDow;i++) cells+='<td style="height:92px;width:14%"></td>';
+  for(var dd=1;dd<=days;dd++){ const items=byDay[dd]||[]; const sum=items.reduce((s,o)=>s+Number(o.current_balance||0),0);
+    cells+='<td class="align-top border-t border-l border-slate-200 p-1" style="height:92px;width:14%"><div class="text-xs text-slate-400">'+dd+'</div>'+(items.length?'<div class="text-xs font-bold" style="color:#b45309">USD '+sum.toFixed(0)+'</div>'+items.slice(0,3).map(o=>'<div class="text-[10px] text-slate-500 truncate">'+esc(o.provider_id)+'</div>').join(''):'')+'</td>';
+    if((startDow+dd)%7===0) cells+='</tr><tr>'; }
+  const dow=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(x=>'<th class="text-xs text-slate-500 p-1">'+x+'</th>').join('');
+  return panel('Calendar — due dates',
+    '<div class="flex items-center gap-3 mb-3"><button class="btn-ghost" id="cal-prev">←</button><b>'+esc(ym)+'</b><button class="btn-ghost" id="cal-next">→</button><span class="text-slate-500 text-sm">amounts due by day (recurring due-day, then statement due date)</span></div>'+
+    '<div class="card overflow-hidden"><table class="w-full" style="table-layout:fixed"><thead><tr>'+dow+'</tr></thead><tbody><tr>'+cells+'</tr></tbody></table></div>');
+}
+function bindCalendar(){
+  const now=new Date(); const ym=window.__calYM||(now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'));
+  const shift=(n)=>{ const p=ym.split('-'); var Y=Number(p[0]),M=Number(p[1])+n; if(M<1){M=12;Y--;} if(M>12){M=1;Y++;} window.__calYM=Y+'-'+String(M).padStart(2,'0'); show('calendar'); };
+  const pv=document.getElementById('cal-prev'); if(pv) pv.onclick=()=>shift(-1);
+  const nx=document.getElementById('cal-next'); if(nx) nx.onclick=()=>shift(1);
+}
 
 async function viewHealth(){
   const h = await api('/api/health');
