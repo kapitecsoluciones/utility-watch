@@ -82,9 +82,9 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
 
     const ctx: ProviderContext = {
       logger: {
-        info: (m, meta) => void log("info", "provider", m, meta),
-        warn: (m, meta) => void log("warn", "provider", m, meta),
-        error: (m, meta) => void log("error", "provider", m, meta),
+        info: (m, meta) => void log("info", "provider", m, meta).catch(() => {}),
+        warn: (m, meta) => void log("warn", "provider", m, meta).catch(() => {}),
+        error: (m, meta) => void log("error", "provider", m, meta).catch(() => {}),
       },
       account: { ref: account.external_account_ref ?? account.display_name, displayName: account.display_name },
       getSecret: (name) => process.env[`SECRET_${name.toUpperCase()}`],

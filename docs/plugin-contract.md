@@ -87,16 +87,15 @@ The first TypeScript interface can be small:
 ~~~ts
 export interface UtilityWatchProvider {
   manifest: ProviderManifest;
-  healthcheck?(ctx: ProviderContext): Promise<HealthcheckResult>;
-  login?(ctx: ProviderContext): Promise<LoginResult>;
-  listAccounts?(ctx: ProviderContext): Promise<AccountCandidate[]>;
-  listBills?(ctx: ProviderContext, account: ProviderAccount): Promise<BillCandidate[]>;
-  downloadBill?(ctx: ProviderContext, bill: BillCandidate): Promise<BillArtifactResult>;
-  normalizeBill?(ctx: ProviderContext, artifact: BillArtifactResult): Promise<NormalizedBillResult>;
+  healthcheck?(ctx: ProviderContext): Promise<{ ok: boolean; detail?: string }>;
+  login?(ctx: ProviderContext): Promise<{ ok: boolean; error?: StructuredError }>;
+  listBills?(ctx: ProviderContext): Promise<BillCandidate[]>;
+  downloadBill?(ctx: ProviderContext, bill: BillCandidate): Promise<RawBillArtifact>;
+  normalizeBill?(ctx: ProviderContext, artifact: RawBillArtifact): Promise<NormalizedBill>;
 }
 ~~~
 
-The MVP can implement only the methods required by the mock provider, but the contract should name the lifecycle.
+This matches `packages/core/src/plugins/contract.ts` exactly. The MVP can implement only the methods a provider needs. The `accounts.list` capability is reserved for future account-discovery; v0 has no `listAccounts()` lifecycle method (accounts are configured directly, not discovered through the plugin).
 
 ## 6. Provider Context
 

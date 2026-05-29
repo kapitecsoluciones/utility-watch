@@ -4,9 +4,17 @@ import { randomUUID } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildMcpServer, type McpDeps } from "./server.ts";
 
+const MAX_BODY_BYTES = 256 * 1024;
+
 async function readJson(req: IncomingMessage): Promise<unknown> {
-  let data = "";
-  for await (const chunk of req) data += chunk;
+  let size = 0;
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > MAX_BODY_BYTES) throw new Error("request body too large");
+    chunks.push(chunk as Buffer);
+  }
+  const data = Buffer.concat(chunks).toString("utf8");
   return data ? JSON.parse(data) : undefined;
 }
 
@@ -25,6 +33,11 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
   const allowedOrigins = (process.env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const enableDnsRebindingProtection = allowedHosts.length > 0 || allowedOrigins.length > 0;
 
+  // Optional bearer-token auth. When MCP_AUTH_TOKEN is set, every /mcp request
+  // must present `Authorization: Bearer <token>`. Left unset, the endpoint is
+  // open (intended only for local dev or a synthetic-data demo).
+  const authToken = process.env.MCP_AUTH_TOKEN ?? "";
+
   const httpServer = createServer(async (req, res) => {
     try {
       if (req.method === "GET" && req.url === "/health") {
@@ -36,6 +49,14 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
         res.writeHead(404, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "not found" }));
         return;
+      }
+      if (authToken) {
+        const provided = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+        if (provided !== authToken) {
+          res.writeHead(401, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unauthorized" }));
+          return;
+        }
       }
 
       const sessionId = req.headers["mcp-session-id"] as string | undefined;
@@ -57,7 +78,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
           t.onclose = () => {
             const sid = t.sessionId;
             if (sid) transports.delete(sid);
-            void server.close();
+            server.close().catch(() => {});
           };
           await server.connect(t);
           transport = t;
@@ -74,8 +95,9 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
       res.writeHead(400, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "invalid MCP request (missing or unknown session)" }));
     } catch (e) {
+      process.stderr.write(`[mcp-http] ${(e as Error).stack ?? (e as Error).message}\n`);
       if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: (e as Error).message }));
+      res.end(JSON.stringify({ error: "internal server error" }));
     }
   });
 

@@ -621,10 +621,11 @@ The TypeScript lifecycle interface is defined in [`docs/plugin-contract.md`](./d
 
 - `healthcheck(ctx)`
 - `login(ctx)`
-- `listAccounts(ctx)`
-- `listBills(ctx, account)`
+- `listBills(ctx)`
 - `downloadBill(ctx, bill)`
 - `normalizeBill(ctx, artifact)`
+
+(There is no `listAccounts()` method in v0 — the `accounts.list` capability is reserved for future account-discovery; accounts are configured directly.)
 
 The MVP may implement only the methods a given provider needs, but the names above are the contract. (Earlier drafts used `fetchBills`/`validateBill`; those names are retired — `listBills` + `downloadBill` replace `fetchBills`, and validation is part of `normalizeBill` and the core review layer, not a separate plugin method.)
 
@@ -1035,35 +1036,31 @@ Each error must include:
 
 ## 15. CLI v0
 
-Required commands:
+Implemented today:
 
 - `utility-watch setup`
 - `utility-watch setup:check`
 - `utility-watch db:migrate`
 - `utility-watch admin:create`
-- `utility-watch admin:reset`
-- `utility-watch config:show --redacted`
+- `utility-watch config:show` (redacted by default)
 - `utility-watch doctor`
 - `utility-watch providers:list`
-- `utility-watch providers:install <provider-id>`
-- `utility-watch providers:activate <provider-id>`
-- `utility-watch providers:deactivate <provider-id>`
-- `utility-watch providers:validate <path>`
-- `utility-watch accounts:create`
-- `utility-watch jobs:create`
-- `utility-watch jobs:run <job-id>`
+- `utility-watch providers:install <plugin-dir>`
+- `utility-watch providers:validate <plugin-dir | plugin.json>`
+- `utility-watch accounts:create` / `accounts:list`
+- `utility-watch run --account <id>` (runs a retrieval for an account; v0 uses
+  direct runs rather than a separate jobs table)
 - `utility-watch runs:show <run-id>`
-- `utility-watch bills:list`
-- `utility-watch bills:review <bill-id>`
-- `utility-watch bills:export <bill-id>`
-
-Nice-to-have commands:
-
-- `utility-watch providers:test <provider-id>`
-- `utility-watch artifacts:list <run-id>`
-- `utility-watch demo`
+- `utility-watch bills:list` / `bills:show <id>` / `bills:review <id>` / `bills:export <id>`
+- `utility-watch mcp` / `mcp:stdio` (the agent interface, §16)
 - `utility-watch demo:seed`
-- `utility-watch users:list`
+
+Planned (not yet implemented):
+
+- `utility-watch admin:reset` — recovery-only local password reset.
+- `utility-watch providers:activate` / `providers:deactivate` — provider lifecycle.
+- `utility-watch jobs:create` / `jobs:run <job-id>` — scheduled jobs (v0 uses `run --account`).
+- `utility-watch providers:test`, `artifacts:list`, `users:list`.
 
 ## 16. Agent-Native Interface (MCP) — Primary Face
 
