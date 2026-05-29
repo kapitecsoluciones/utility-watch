@@ -76,7 +76,7 @@ function renderLogin(){
   document.getElementById('password').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('loginBtn').click(); });
 }
 
-const SECTIONS = [['overview','Overview'],['providers','Providers'],['accounts','Accounts'],['bills','Bills'],['history','History'],['users','Users'],['audit','Audit'],['reports','Reports']];
+const SECTIONS = [['overview','Overview'],['properties','Properties'],['obligations','Accounts & balances'],['providers','Providers'],['accounts','Logins'],['bills','Bills'],['history','History'],['users','Users'],['audit','Audit'],['reports','Reports']];
 
 function renderApp(){
   const app=document.getElementById('app'); app.replaceChildren();
@@ -104,6 +104,8 @@ async function show(id){
     if(id==='bills'){ main.innerHTML = await viewBills(); bindActions(); return; }
     if(id==='history'){ main.innerHTML = await viewHistory(); return; }
     if(id==='users'){ main.innerHTML = await viewUsers(); bindUsers(); return; }
+    if(id==='properties'){ main.innerHTML = await viewProperties(); bindProperties(); return; }
+    if(id==='obligations'){ main.innerHTML = await viewObligations(); bindObligations(); return; }
     if(id==='audit'){ main.innerHTML = await viewAudit(); return; }
     if(id==='reports'){ main.innerHTML = await viewReports(); return; }
   }catch(e){ main.innerHTML = '<div class="text-red-600">'+esc(e.message)+'</div>'; }
@@ -188,6 +190,71 @@ async function viewUsers(){
 function bindUsers(){
   const add=document.getElementById('u-add');
   if(add) add.onclick=async()=>{ try{ await api('/api/users','POST',{name:document.getElementById('u-name').value,email:document.getElementById('u-email').value,password:document.getElementById('u-pass').value,roleCode:document.getElementById('u-role').value}); show('users'); }catch(e){ alert(e.message); } };
+}
+
+function oblPill(s){ var c=({overdue:'#b91c1c',due:'#b45309',paid:'#047857',arrangement:'#0e7490',cancelled:'#64748b',unknown:'#94a3b8'})[s]||'#64748b'; return '<span class="pill" style="color:'+c+';border-color:'+c+'55">'+esc(s)+'</span>'; }
+
+async function viewProperties(){
+  const ps = await api('/api/properties');
+  const grand = ps.reduce((s,p)=>s+Number(p.total_balance||0),0);
+  const rows = ps.map(p=>'<tr class="cursor-pointer hover:bg-slate-50" data-prop="'+p.id+'" data-name="'+esc(p.name)+'"><td><b>'+esc(p.name)+'</b></td><td class="text-slate-500">'+esc(p.type||'—')+'</td><td class="text-slate-500">'+esc(p.address||'—')+'</td><td>'+p.obligation_count+'</td><td class="text-right font-semibold">USD '+Number(p.total_balance||0).toFixed(2)+'</td></tr>').join('');
+  const form = can('accounts.create') ? '<div class="card p-4 mb-4 flex flex-wrap gap-2 items-end"><div><div class="text-xs text-slate-500 mb-1">New property</div><input id="prop-name" class="field" placeholder="Name"></div><div><input id="prop-type" class="field" placeholder="Type"></div><div><input id="prop-addr" class="field" placeholder="Address"></div><button class="btn" id="prop-add">Add property</button></div>' : '';
+  return panel('Properties',
+    '<div class="card p-5 mb-4"><div class="text-xs uppercase tracking-widest text-slate-500">Total currently owed</div><div class="text-3xl font-bold mt-1">USD '+grand.toFixed(2)+'</div><div class="text-slate-500 text-sm mt-1">'+ps.length+' properties · click a row to see its accounts</div></div>'+
+    form + tbl([{h:'Property'},{h:'Type'},{h:'Address'},{h:'Accounts'},{h:'Owed',r:1}], rows));
+}
+function bindProperties(){
+  const add=document.getElementById('prop-add');
+  if(add) add.onclick=async()=>{ try{ await api('/api/properties','POST',{name:document.getElementById('prop-name').value,type:document.getElementById('prop-type').value,address:document.getElementById('prop-addr').value}); show('properties'); }catch(e){ alert(e.message); } };
+  document.querySelectorAll('[data-prop]').forEach(r=>r.onclick=()=>{ window.__oblProp={id:r.dataset.prop,name:r.dataset.name}; show('obligations'); });
+}
+
+async function viewObligations(){
+  const filt = window.__oblProp;
+  const params=[]; if(filt) params.push('property='+filt.id); if(window.__oblSearch) params.push('search='+encodeURIComponent(window.__oblSearch));
+  const obs = await api('/api/obligations'+(params.length?('?'+params.join('&')):''));
+  const grand = obs.reduce((s,o)=>s+Number(o.current_balance||0),0);
+  const rows = obs.map(o=>'<tr class="cursor-pointer hover:bg-slate-50" data-obl="'+o.id+'"><td><code>'+esc(o.provider_id)+'</code></td><td>'+esc(o.account_ref)+'</td><td class="text-slate-500">'+esc(o.property_name||'—')+'</td><td class="text-right font-semibold">'+(o.current_balance==null?'—':'USD '+Number(o.current_balance).toFixed(2))+'</td><td class="text-slate-500">'+esc(o.current_due_date||'—')+'</td><td>'+oblPill(o.status)+'</td></tr>').join('');
+  const hdr = filt?'<div class="mb-3 text-sm"><button class="btn-ghost" id="obl-clear">← All properties</button> <b>'+esc(filt.name)+'</b></div>':'';
+  return panel('Accounts & balances',
+    hdr+'<div class="card p-4 mb-4 flex gap-4 items-end"><div><div class="text-xs text-slate-500 uppercase">Owed'+(filt?' (this property)':'')+'</div><div class="text-2xl font-bold">USD '+grand.toFixed(2)+'</div></div><div class="flex-1"></div><div><div class="text-xs text-slate-500 mb-1">Search</div><input id="obl-search" class="field" placeholder="provider / account / property" value="'+esc(window.__oblSearch||'')+'"></div></div>'+
+    tbl([{h:'Provider'},{h:'Account'},{h:'Property'},{h:'Owed',r:1},{h:'Due'},{h:'Status'}], rows));
+}
+function bindObligations(){
+  const clr=document.getElementById('obl-clear'); if(clr) clr.onclick=()=>{ window.__oblProp=null; show('obligations'); };
+  const s=document.getElementById('obl-search'); if(s) s.onchange=()=>{ window.__oblSearch=s.value; show('obligations'); };
+  document.querySelectorAll('[data-obl]').forEach(r=>r.onclick=()=>showObligation(r.dataset.obl));
+}
+
+async function showObligation(id){
+  const main=document.getElementById('main'); main.innerHTML='<div class="text-slate-500">Loading…</div>';
+  try{
+    const res=await Promise.all([api('/api/obligations/'+id), api('/api/properties')]);
+    const o=res[0], props=res[1];
+    const hist=(o.history||[]).map(h=>'<tr><td class="text-slate-500 mono text-xs">'+esc(String(h.started_at||'').slice(0,16))+'</td><td class="text-right">'+(h.amount_due==null?'—':'USD '+Number(h.amount_due).toFixed(2))+'</td><td class="text-slate-500">'+esc(h.due_date||'—')+'</td><td class="text-slate-500">'+esc(h.status)+'</td></tr>').join('');
+    const pays=(o.payments||[]).map(p=>'<tr><td>'+esc(p.payment_date)+'</td><td class="text-right">USD '+Number(p.amount).toFixed(2)+'</td><td class="text-slate-500">'+esc(p.payment_method||'—')+'</td><td class="text-slate-500">'+esc(p.source)+'</td></tr>').join('');
+    const opts='<option value="">— unassigned —</option>'+props.map(p=>'<option value="'+p.id+'"'+(o.property_id==p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('');
+    main.innerHTML = panel(esc(o.provider_id)+' · '+esc(o.account_ref),
+      '<button class="btn-ghost mb-4" id="o-back">← Back</button>'+
+      '<div class="grid grid-cols-3 gap-3 mb-4">'+
+        '<div class="card p-4"><div class="text-xs text-slate-500 uppercase">Current balance</div><div class="text-2xl font-bold mt-1">'+(o.current_balance==null?'—':'USD '+Number(o.current_balance).toFixed(2))+'</div></div>'+
+        '<div class="card p-4"><div class="text-xs text-slate-500 uppercase">Due</div><div class="text-lg font-semibold mt-1">'+esc(o.current_due_date||'—')+'</div></div>'+
+        '<div class="card p-4"><div class="text-xs text-slate-500 uppercase">Status</div><div class="mt-2">'+oblPill(o.status)+'</div></div>'+
+      '</div>'+
+      '<div class="card p-4 mb-4 flex flex-wrap gap-3 items-end">'+
+        '<div><div class="text-xs text-slate-500 mb-1">Property</div><select id="o-prop" class="field">'+opts+'</select></div>'+
+        (can('accounts.create')?'<button class="btn-ghost" id="o-save">Save</button>':'')+
+        '<div class="flex-1"></div>'+
+        (can('bills.review')?'<div><div class="text-xs text-slate-500 mb-1">Record payment</div><input id="o-amt" class="field" placeholder="Amount" style="width:120px"></div><button class="btn" id="o-pay">Add payment</button>':'')+
+      '</div>'+
+      '<div class="grid grid-cols-2 gap-4">'+
+        '<div><div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Statement history</div>'+tbl([{h:'Run'},{h:'Amount',r:1},{h:'Due'},{h:'Status'}],hist)+'</div>'+
+        '<div><div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Payments</div>'+tbl([{h:'Date'},{h:'Amount',r:1},{h:'Method'},{h:'Source'}],pays)+'</div>'+
+      '</div>');
+    document.getElementById('o-back').onclick=()=>show('obligations');
+    const sv=document.getElementById('o-save'); if(sv) sv.onclick=async()=>{ try{ await api('/api/obligations/'+id,'POST',{property_id:document.getElementById('o-prop').value||null}); showObligation(id); }catch(e){ alert(e.message); } };
+    const pay=document.getElementById('o-pay'); if(pay) pay.onclick=async()=>{ const amt=Number(document.getElementById('o-amt').value); if(!(amt>0)){alert('Enter a positive amount');return;} try{ await api('/api/payments','POST',{obligationId:Number(id),amount:amt}); showObligation(id); }catch(e){ alert(e.message); } };
+  }catch(e){ main.innerHTML='<div class="text-red-600">'+esc(e.message)+'</div>'; }
 }
 
 async function viewReports(){

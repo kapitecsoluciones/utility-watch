@@ -16,6 +16,9 @@ import { listRuns } from "../services/runs.ts";
 import { reportSummary } from "../services/reports.ts";
 import { loadManifestFile, validateManifest } from "../plugins/validate.ts";
 import { logAudit, listAudit } from "../services/audit.ts";
+import { listProperties, createProperty } from "../services/properties.ts";
+import { listObligations, getObligation, setObligationMeta } from "../services/obligations.ts";
+import { addPayment } from "../services/payments.ts";
 import { repoRoot, coreRoot } from "../paths.ts";
 import { join, resolve } from "node:path";
 
@@ -101,7 +104,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
   const httpServer = createServer(async (req, res) => {
     try {
       const url = req.url ?? "/";
-      const path = url.split("?")[0];
+      const path = url.split("?")[0] ?? "/";
 
       if (req.method === "GET" && path === "/health") {
         return json(res, 200, { ok: true, service: "utility-watch-mcp", version: "0.1.0" });
@@ -194,6 +197,27 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
             if (!need("users.manage")) return json(res, 403, { ok: false, error: "missing capability users.manage" });
             return json(res, 200, { enabled: Boolean(authToken), token: authToken || null });
           }
+          if (path === "/api/properties") return json(res, 200, await listProperties(deps.pool));
+          if (path === "/api/obligations") {
+            const q = new URL(url, "http://x").searchParams;
+            const today = new Date().toISOString().slice(0, 10);
+            return json(res, 200, await listObligations(deps.pool, {
+              propertyId: q.get("property") ? Number(q.get("property")) : undefined,
+              categoryId: q.get("category") ? Number(q.get("category")) : undefined,
+              status: q.get("status") || undefined,
+              search: q.get("search") || undefined,
+              sort: q.get("sort") || undefined,
+              order: q.get("order") === "DESC" ? "DESC" : "ASC",
+            }, today));
+          }
+          {
+            const m = path.match(/^\/api\/obligations\/(\d+)$/);
+            if (m) {
+              const today = new Date().toISOString().slice(0, 10);
+              const o = await getObligation(deps.pool, Number(m[1]), today);
+              return o ? json(res, 200, o) : json(res, 404, { ok: false, error: "obligation not found" });
+            }
+          }
           if (url === "/api/overview") return json(res, 200, await reportSummary(deps.pool));
           if (url === "/api/providers") {
             const registry = await readRegistry();
@@ -225,6 +249,34 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
 
         if (req.method === "POST") {
           const body = ((await readJson(req)) ?? {}) as Record<string, unknown>;
+
+          if (path === "/api/properties") {
+            if (!need("accounts.create")) return json(res, 403, { ok: false, error: "missing capability accounts.create" });
+            const name = String(body.name ?? "").trim();
+            if (!name) return json(res, 400, { ok: false, error: "name required" });
+            const id = await createProperty(deps.pool, { name, address: body.address ? String(body.address) : undefined, type: body.type ? String(body.type) : undefined, notes: body.notes ? String(body.notes) : undefined });
+            await logAudit(deps.pool, { actor: op.email, action: "property.create", ip, targetType: "property", targetId: id });
+            return json(res, 200, { ok: true, id });
+          }
+          {
+            const m = path.match(/^\/api\/obligations\/(\d+)$/);
+            if (m) {
+              if (!need("accounts.create")) return json(res, 403, { ok: false, error: "missing capability accounts.create" });
+              await setObligationMeta(deps.pool, Number(m[1]), body);
+              await logAudit(deps.pool, { actor: op.email, action: "obligation.update", ip, targetType: "obligation", targetId: m[1], detail: Object.keys(body) });
+              return json(res, 200, { ok: true });
+            }
+          }
+          if (path === "/api/payments") {
+            if (!need("bills.review")) return json(res, 403, { ok: false, error: "missing capability bills.review" });
+            const obligationId = posInt(body.obligationId);
+            const amount = Number(body.amount);
+            if (!obligationId || !(amount > 0)) return json(res, 400, { ok: false, error: "valid obligationId and positive amount required" });
+            const today = new Date().toISOString().slice(0, 10);
+            const result = await addPayment(deps.pool, { obligationId, amount, paymentDate: typeof body.paymentDate === "string" && body.paymentDate ? body.paymentDate : today, paymentMethod: body.paymentMethod ? String(body.paymentMethod) : undefined, notes: body.notes ? String(body.notes) : undefined });
+            await logAudit(deps.pool, { actor: op.email, action: "payment.add", ip, targetType: "obligation", targetId: obligationId, detail: { amount, newBalance: result.newBalance } });
+            return json(res, 200, { ok: true, ...result });
+          }
 
           if (url === "/api/providers/install") {
             if (!need("providers.install")) return json(res, 403, { ok: false, error: "missing capability providers.install" });
@@ -307,7 +359,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
             if (!need("jobs.run")) return json(res, 403, { ok: false, error: "missing capability jobs.run" });
             const accountId = posInt(body.accountId);
             if (!accountId) return json(res, 400, { ok: false, error: "valid accountId required" });
-            const outcome = await executeRun(deps.pool, { accountId, artifactsDir: deps.config.artifactsDir, confidenceThreshold: deps.config.reviewConfidenceThreshold, brightData: deps.config.brightData });
+            const outcome = await executeRun(deps.pool, { accountId, artifactsDir: deps.config.artifactsDir, confidenceThreshold: deps.config.reviewConfidenceThreshold, brightData: deps.config.brightData, secretsKey: deps.config.secretsKey });
             await logAudit(deps.pool, { actor: op.email, action: "bill.run", ip, targetType: "account", targetId: accountId, detail: { billId: outcome.billId, status: outcome.status } });
             return json(res, 200, { ok: true, outcome });
           }
