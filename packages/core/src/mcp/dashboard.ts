@@ -115,22 +115,29 @@ async function viewOverview(){
 
 async function viewProviders(){
   const ps = await api('/api/providers');
-  const rows = ps.map(p=>'<tr><td><code>'+esc(p.id)+'</code></td><td>'+esc(p.name)+'</td><td class="text-slate-500">'+esc((p.serviceTypes||[]).join(', '))+'</td><td class="text-slate-500">'+esc(p.brightData)+'</td><td>'+(p.installed?'<span class="pill st-approved">installed</span>':'<span class="pill">registry</span>')+'</td><td class="text-right">'+((!p.installed && can('providers.install'))?'<button class="btn-ghost" data-install="'+esc(p.id)+'">Install</button>':'—')+'</td></tr>').join('');
-  return panel('Providers (utility companies as plugins)', tbl([{h:'ID'},{h:'Name'},{h:'Service'},{h:'Bright Data'},{h:'State'},{h:'Action',r:1}], rows));
+  const rows = ps.map(p=>'<tr><td><code>'+esc(p.id)+'</code></td><td>'+esc(p.name)+'</td><td class="text-slate-500">'+esc((p.serviceTypes||[]).join(', '))+'</td><td class="text-slate-500">'+esc(p.kind||'code')+'</td><td>'+(p.installed?'<span class="pill st-approved">installed</span>':'<span class="pill">registry</span>')+'</td><td class="text-right">'+((!p.installed && can('providers.install'))?'<button class="btn-ghost" data-install="'+esc(p.id)+'">Install</button>':'—')+'</td></tr>').join('');
+  const add = can('providers.install') ? '<div class="card p-4 mb-4"><div class="font-semibold mb-1">Add a declarative provider</div><div class="text-xs text-slate-500 mb-2">Paste a uw-plugin-v1 manifest with kind "declarative" and a parser block. No code — bills are normalized by declarative rules; ingest via Upload/Fetch on its accounts.</div><textarea id="reg-man" class="field w-full" rows="6" placeholder="uw-plugin-v1 manifest JSON (kind: declarative, with a parser block)"></textarea><div class="mt-2"><button class="btn" id="reg-btn">Register provider</button> <span id="reg-msg" class="text-xs text-slate-500"></span></div></div>' : '';
+  return panel('Providers (utility companies as plugins)', add + tbl([{h:'ID'},{h:'Name'},{h:'Service'},{h:'Kind'},{h:'State'},{h:'Action',r:1}], rows));
 }
-function bindProviders(){ document.querySelectorAll('[data-install]').forEach(b=>b.onclick=async()=>{ try{ await api('/api/providers/install','POST',{id:b.dataset.install}); show('providers'); }catch(e){ alert(e.message); } }); }
+function bindProviders(){
+  document.querySelectorAll('[data-install]').forEach(b=>b.onclick=async()=>{ try{ await api('/api/providers/install','POST',{id:b.dataset.install}); show('providers'); }catch(e){ alert(e.message); } });
+  const reg=document.getElementById('reg-btn');
+  if(reg) reg.onclick=async()=>{ const msg=document.getElementById('reg-msg'); msg.textContent='Registering…'; try{ const r=await api('/api/providers/register','POST',{manifest:document.getElementById('reg-man').value}); msg.textContent='Registered '+r.id; show('providers'); }catch(e){ msg.textContent=e.message; } };
+}
 
 async function viewAccounts(){
   const res = await Promise.all([api('/api/accounts'), api('/api/providers')]);
   const accts=res[0], installed=res[1].filter(p=>p.installed);
-  const rows = accts.map(a=>'<tr><td>#'+a.id+'</td><td><code>'+esc(a.provider)+'</code></td><td>'+esc(a.displayName)+'</td><td class="text-slate-500">'+esc(a.ref||'—')+'</td><td>'+esc(a.status)+'</td><td class="text-right">'+(can('jobs.run')?'<button class="btn-ghost" data-run="'+a.id+'">Run retrieval</button>':'—')+'</td></tr>').join('');
+  const rows = accts.map(function(a){ var act='—'; if(can('jobs.run')){ act = a.kind==='declarative' ? '<button class="btn-ghost" data-upload="'+a.id+'">Upload bill</button> <button class="btn-ghost" data-fetch="'+a.id+'">Fetch URL</button>' : '<button class="btn-ghost" data-run="'+a.id+'">Run retrieval</button>'; } return '<tr><td>#'+a.id+'</td><td><code>'+esc(a.provider)+'</code></td><td>'+esc(a.displayName)+'</td><td class="text-slate-500">'+esc(a.kind||'code')+'</td><td>'+esc(a.status)+'</td><td class="text-right">'+act+'</td></tr>'; }).join('');
   const form = can('accounts.create') ? '<div class="card p-4 mb-4 flex flex-wrap gap-2 items-end"><div><div class="text-xs text-slate-500 mb-1">Provider</div><select id="acc-prov" class="field">'+installed.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('')+'</select></div><div><div class="text-xs text-slate-500 mb-1">Display name</div><input id="acc-name" class="field" placeholder="e.g. Main office"></div><div><div class="text-xs text-slate-500 mb-1">Account ref</div><input id="acc-ref" class="field" placeholder="optional"></div><button class="btn" id="acc-add">Add account</button></div>' : '';
-  return panel('Accounts', form + tbl([{h:'ID'},{h:'Provider'},{h:'Name'},{h:'Ref'},{h:'Status'},{h:'Action',r:1}], rows));
+  return panel('Accounts', form + tbl([{h:'ID'},{h:'Provider'},{h:'Name'},{h:'Kind'},{h:'Status'},{h:'Action',r:1}], rows));
 }
 function bindAccounts(){
   const add=document.getElementById('acc-add');
   if(add) add.onclick=async()=>{ try{ await api('/api/accounts','POST',{providerId:document.getElementById('acc-prov').value,displayName:document.getElementById('acc-name').value,ref:document.getElementById('acc-ref').value}); show('accounts'); }catch(e){ alert(e.message); } };
   document.querySelectorAll('[data-run]').forEach(b=>b.onclick=async()=>{ b.disabled=true; b.textContent='Running…'; try{ await api('/api/actions/run','POST',{accountId:Number(b.dataset.run)}); show('bills'); }catch(e){ alert(e.message); show('accounts'); } });
+  document.querySelectorAll('[data-upload]').forEach(b=>b.onclick=async()=>{ const content=prompt('Paste the bill text or JSON to normalize:'); if(content==null||content==='') return; try{ await api('/api/actions/ingest','POST',{accountId:Number(b.dataset.upload),content:content}); show('bills'); }catch(e){ alert(e.message); } });
+  document.querySelectorAll('[data-fetch]').forEach(b=>b.onclick=async()=>{ const url=prompt('Public bill URL to fetch (SSRF-guarded, must match provider allowlist):'); if(!url) return; b.disabled=true; b.textContent='Fetching…'; try{ await api('/api/actions/ingest','POST',{accountId:Number(b.dataset.fetch),url:url}); show('bills'); }catch(e){ alert(e.message); show('accounts'); } });
 }
 
 async function viewBills(){

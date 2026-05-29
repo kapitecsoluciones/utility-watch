@@ -37,7 +37,25 @@ export function validateManifest(input: unknown): ValidationResult {
   check(isStr(m.coreVersion), "coreVersion: required version range string");
   check(isStr(m.country) && /^[A-Z]{2}$/.test(m.country as string), "country: must be ISO-3166 alpha-2");
   check(subsetOf(m.serviceTypes, SERVICE_TYPES), `serviceTypes: non-empty subset of ${SERVICE_TYPES.join("|")}`);
-  check(isStr(m.entrypoint), "entrypoint: required string");
+
+  const kind = m.kind === undefined ? "code" : m.kind;
+  check(kind === "code" || kind === "declarative", "kind: must be 'code' or 'declarative'");
+  if (kind === "declarative") {
+    const parser = m.parser as Record<string, unknown> | undefined;
+    if (!parser || typeof parser !== "object") {
+      errors.push("parser: required object for kind 'declarative'");
+    } else {
+      check(parser.schemaVersion === "uw-parser-v1", "parser.schemaVersion: must be 'uw-parser-v1'");
+      check(parser.artifact === "text" || parser.artifact === "json", "parser.artifact: 'text' or 'json'");
+      const f = parser.fields as Record<string, unknown> | undefined;
+      check(
+        !!f && typeof f === "object" && !!f.amountDue && !!f.dueDate && !!f.statementDate,
+        "parser.fields: must define amountDue, dueDate, statementDate",
+      );
+    }
+  } else {
+    check(isStr(m.entrypoint), "entrypoint: required string for kind 'code'");
+  }
   check(subsetOf(m.capabilities, CAPABILITIES), `capabilities: non-empty subset of ${CAPABILITIES.join("|")}`);
 
   const auth = m.auth as Record<string, unknown> | undefined;

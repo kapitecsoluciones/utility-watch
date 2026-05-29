@@ -7,7 +7,9 @@ import { loadManifestFile } from "../plugins/validate.ts";
 import { selectAdapter } from "../adapters/select.ts";
 import { openBrightDataBrowser } from "../adapters/brightdata.ts";
 import { getAccount } from "../services/accounts.ts";
-import { getRegistryProvider } from "../services/providers.ts";
+import { getRegistryProvider, getProviderManifest } from "../services/providers.ts";
+import { parseDeclarative } from "../plugins/declarative.ts";
+import { fetchArtifact } from "../adapters/fetch.ts";
 import { repoRoot } from "../paths.ts";
 import type { ProviderContext, NormalizedBill, ErrorCode, RawBillArtifact } from "../plugins/contract.ts";
 import type { BrightDataConfig } from "../config/index.ts";
@@ -160,5 +162,100 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
     return { runId, status: "needs_review", billId, confidence: bill.confidence };
   } catch (e) {
     return fail("failed", "error.unknown", (e as Error).message);
+  }
+}
+
+export interface IngestOptions {
+  accountId: number;
+  content?: string;
+  contentType?: "text" | "json" | "html";
+  url?: string;
+  artifactsDir: string;
+  confidenceThreshold: number;
+  brightData?: BrightDataConfig;
+}
+
+/**
+ * Ingest an artifact for an account WITHOUT a live code-fetch: from a manual
+ * upload (content) or a SSRF-guarded URL fetch. Normalizes via the declarative
+ * parser (declarative providers) or the provider's normalizeBill (code), then
+ * persists run + artifact + bill + review. Never throws once a run row exists.
+ */
+export async function ingestArtifact(pool: Pool, opts: IngestOptions): Promise<RunOutcome> {
+  const account = await getAccount(pool, opts.accountId);
+  if (!account) throw new Error(`account ${opts.accountId} not found`);
+  const manifest = await getProviderManifest(pool, account.provider_id);
+  const url = opts.url ?? account.fetch_url ?? undefined;
+  const adapter = opts.content != null ? "manual" : "fetch";
+
+  const [runRes] = await pool.query<ResultSetHeader>(
+    "INSERT INTO runs (account_id, provider_id, adapter, adapter_reason, status, started_at) VALUES (?, ?, ?, ?, 'running', NOW())",
+    [account.id, account.provider_id, adapter, opts.content != null ? "manual upload" : `fetch ${url ?? ""}`.trim()],
+  );
+  const runId = runRes.insertId;
+  const log = (level: string, event: string, message: string, meta?: Record<string, unknown>) =>
+    pool.query("INSERT INTO run_logs (run_id, level, event, message, metadata_json) VALUES (?, ?, ?, ?, ?)", [runId, level, event, message, meta ? JSON.stringify(meta) : null]);
+  const fail = async (code: ErrorCode, message: string): Promise<RunOutcome> => {
+    await pool.query("UPDATE runs SET status = 'failed', error_code = ?, error_message = ?, finished_at = NOW() WHERE id = ?", [code, message, runId]);
+    await log("error", "run.failed", message, { code });
+    return { runId, status: "failed", errorCode: code, errorMessage: message };
+  };
+
+  try {
+    let artifact: RawBillArtifact;
+    if (opts.content != null) {
+      artifact = { content: opts.content, contentType: opts.contentType ?? "text" };
+    } else if (url) {
+      artifact = await fetchArtifact(url, { allowedHosts: manifest?.permissions?.network ?? [] });
+    } else {
+      return fail("error.unknown", "ingest requires content or a url");
+    }
+    await log("info", "artifact.obtained", adapter === "manual" ? "manual upload" : `fetched ${artifact.sourceUrl ?? url}`);
+
+    let bill: NormalizedBill;
+    if (manifest?.kind === "declarative" && manifest.parser) {
+      bill = parseDeclarative(manifest.parser, artifact);
+      bill.providerId = account.provider_id;
+      bill.providerName = manifest.name;
+    } else {
+      const reg = await getRegistryProvider(account.provider_id);
+      const provider = await loadProvider(join(repoRoot, reg?.package ?? `plugins/${account.provider_id}`));
+      if (!provider.normalizeBill) return fail("provider.unsupported_account", "provider cannot normalize an uploaded artifact");
+      const ctx: ProviderContext = {
+        logger: { info: () => {}, warn: () => {}, error: () => {} },
+        account: { ref: account.external_account_ref ?? account.display_name, displayName: account.display_name },
+        getSecret: (n) => process.env[`SECRET_${n.toUpperCase()}`],
+      };
+      bill = await provider.normalizeBill(ctx, artifact);
+    }
+
+    const runDir = join(opts.artifactsDir, `run-${runId}`);
+    await mkdir(runDir, { recursive: true });
+    const ext = artifact.contentType === "json" ? "json" : artifact.contentType === "html" ? "html" : "txt";
+    const artifactPath = join(runDir, `bill.${ext}`);
+    await writeFile(artifactPath, artifact.content, "utf8");
+    const sha = createHash("sha256").update(artifact.content).digest("hex");
+    const [artRes] = await pool.query<ResultSetHeader>(
+      "INSERT INTO artifacts (run_id, type, path, mime_type, sha256, redaction_status) VALUES (?, ?, ?, ?, ?, 'synthetic')",
+      [runId, artifact.contentType === "json" ? "json" : "text", artifactPath, artifact.contentType === "json" ? "application/json" : "text/plain", sha],
+    );
+    const artifactId = artRes.insertId;
+    const [billRes] = await pool.query<ResultSetHeader>(
+      `INSERT INTO bills
+         (run_id, account_id, provider_id, statement_date, period_start, period_end, due_date,
+          amount_due, currency, normalized_json, confidence_score, source_url, primary_artifact_id, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'needs_review')`,
+      [runId, account.id, account.provider_id, bill.statementDate, bill.periodStart, bill.periodEnd, bill.dueDate, bill.amountDue, bill.currency, JSON.stringify(bill), bill.confidence, bill.sourceUrl, artifactId],
+    );
+    const billId = billRes.insertId;
+    await pool.query("INSERT INTO reviews (bill_id, status) VALUES (?, 'pending')", [billId]);
+    if (bill.confidence < opts.confidenceThreshold) {
+      await log("warn", "bill.low_confidence", `confidence ${bill.confidence} < threshold ${opts.confidenceThreshold}`, { code: "bill.low_confidence" });
+    }
+    await pool.query("UPDATE runs SET status = 'needs_review', finished_at = NOW() WHERE id = ?", [runId]);
+    await log("info", "run.completed", `bill ${billId} ingested and queued for review`);
+    return { runId, status: "needs_review", billId, confidence: bill.confidence };
+  } catch (e) {
+    return fail("error.unknown", (e as Error).message);
   }
 }

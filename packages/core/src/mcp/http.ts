@@ -14,7 +14,7 @@ import { listAccounts, createAccount } from "../services/accounts.ts";
 import { listBills } from "../services/bills.ts";
 import { listRuns } from "../services/runs.ts";
 import { reportSummary } from "../services/reports.ts";
-import { loadManifestFile } from "../plugins/validate.ts";
+import { loadManifestFile, validateManifest } from "../plugins/validate.ts";
 import { repoRoot, coreRoot } from "../paths.ts";
 import { join, resolve } from "node:path";
 
@@ -25,7 +25,7 @@ const posInt = (v: unknown): number | null => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
-import { executeRun } from "../runner/index.ts";
+import { executeRun, ingestArtifact } from "../runner/index.ts";
 import { reviewBill } from "../services/review.ts";
 import { exportBill } from "../services/exporter.ts";
 
@@ -136,12 +136,22 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
           if (url === "/api/overview") return json(res, 200, await reportSummary(deps.pool));
           if (url === "/api/providers") {
             const registry = await readRegistry();
-            const installed = new Set((await listInstalled(deps.pool)).map((p) => p.id));
-            return json(res, 200, registry.map((p) => ({ ...p, installed: installed.has(p.id) })));
+            const installedList = await listInstalled(deps.pool);
+            const byId = new Map(installedList.map((p) => [p.id, p]));
+            const regIds = new Set(registry.map((r) => r.id));
+            const out = registry.map((p) => ({ ...p, installed: byId.has(p.id), kind: byId.get(p.id)?.kind ?? "code" }));
+            // declarative providers registered via the UI live only in the DB (not the static registry)
+            for (const p of installedList) {
+              if (!regIds.has(p.id)) {
+                out.push({ id: p.id, name: p.name, country: p.country, serviceTypes: [p.utility_type], status: p.registry_status, verification: "fixture-only", brightData: "n/a", installed: true, kind: p.kind });
+              }
+            }
+            return json(res, 200, out);
           }
           if (url === "/api/accounts") {
             const accts = await listAccounts(deps.pool);
-            return json(res, 200, accts.map((a) => ({ id: a.id, provider: a.provider_id, displayName: a.display_name, ref: a.external_account_ref, brightDataAllowed: Boolean(a.brightdata_allowed), status: a.status })));
+            const kindById = new Map((await listInstalled(deps.pool)).map((p) => [p.id, p.kind]));
+            return json(res, 200, accts.map((a) => ({ id: a.id, provider: a.provider_id, kind: kindById.get(a.provider_id) ?? "code", displayName: a.display_name, ref: a.external_account_ref, brightDataAllowed: Boolean(a.brightdata_allowed), status: a.status, fetchUrl: a.fetch_url })));
           }
           if (url === "/api/bills") return json(res, 200, await listBills(deps.pool, {}));
           if (url === "/api/runs") return json(res, 200, await listRuns(deps.pool));
@@ -169,6 +179,35 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
             if (!m.ok || !m.manifest) return json(res, 400, { ok: false, error: `invalid manifest: ${m.errors.join("; ")}` });
             await installProvider(deps.pool, m.manifest);
             return json(res, 200, { ok: true, id });
+          }
+          if (url === "/api/providers/register") {
+            if (!need("providers.install")) return json(res, 403, { ok: false, error: "missing capability providers.install" });
+            let parsed: unknown;
+            try {
+              parsed = typeof body.manifest === "string" ? JSON.parse(body.manifest) : body.manifest;
+            } catch {
+              return json(res, 400, { ok: false, error: "manifest must be valid JSON" });
+            }
+            const v = validateManifest(parsed);
+            if (!v.ok || !v.manifest) return json(res, 400, { ok: false, error: `invalid manifest:\n- ${v.errors.join("\n- ")}` });
+            if (v.manifest.kind !== "declarative") return json(res, 400, { ok: false, error: "register accepts only declarative providers (code providers ship through the repo)" });
+            await installProvider(deps.pool, v.manifest);
+            return json(res, 200, { ok: true, id: v.manifest.id });
+          }
+          if (url === "/api/actions/ingest") {
+            if (!need("jobs.run")) return json(res, 403, { ok: false, error: "missing capability jobs.run" });
+            const accountId = posInt(body.accountId);
+            if (!accountId) return json(res, 400, { ok: false, error: "valid accountId required" });
+            const outcome = await ingestArtifact(deps.pool, {
+              accountId,
+              content: typeof body.content === "string" ? body.content : undefined,
+              contentType: body.contentType === "json" || body.contentType === "html" ? body.contentType : "text",
+              url: typeof body.url === "string" && body.url ? body.url : undefined,
+              artifactsDir: deps.config.artifactsDir,
+              confidenceThreshold: deps.config.reviewConfidenceThreshold,
+              brightData: deps.config.brightData,
+            });
+            return json(res, 200, { ok: true, outcome });
           }
           if (url === "/api/accounts") {
             if (!need("accounts.create")) return json(res, 403, { ok: false, error: "missing capability accounts.create" });

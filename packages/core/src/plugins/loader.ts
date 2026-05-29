@@ -44,6 +44,9 @@ export async function loadProvider(dir: string): Promise<UtilityWatchProvider> {
     throw new Error(`invalid plugin manifest in ${dir}:\n- ${res.errors.join("\n- ")}`);
   }
   const entry = res.manifest.entrypoint;
+  if (!entry) {
+    throw new Error(`plugin ${res.manifest.id}: no entrypoint (declarative providers are not loaded as code)`);
+  }
   const entryPath = isAbsolute(entry) ? entry : resolve(dir, entry);
   const mod = (await import(pathToFileURL(entryPath).href)) as {
     default?: UtilityWatchProvider;

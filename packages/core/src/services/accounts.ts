@@ -16,6 +16,7 @@ export interface AccountRow {
   secret_handle: string | null;
   brightdata_allowed: number;
   status: string;
+  fetch_url: string | null;
 }
 
 export async function createAccount(pool: Pool, input: NewAccount): Promise<number> {
@@ -45,7 +46,7 @@ export async function createAccount(pool: Pool, input: NewAccount): Promise<numb
 
 export async function getAccount(pool: Pool, id: number): Promise<AccountRow | null> {
   const [rows] = await pool.query<RowDataPacket[]>(
-    "SELECT id, provider_id, display_name, external_account_ref, secret_handle, brightdata_allowed, status FROM accounts WHERE id = ?",
+    "SELECT id, provider_id, display_name, external_account_ref, secret_handle, brightdata_allowed, status, fetch_url FROM accounts WHERE id = ?",
     [id],
   );
   return (rows[0] as AccountRow) ?? null;
@@ -53,7 +54,7 @@ export async function getAccount(pool: Pool, id: number): Promise<AccountRow | n
 
 export async function listAccounts(pool: Pool): Promise<AccountRow[]> {
   const [rows] = await pool.query<RowDataPacket[]>(
-    "SELECT id, provider_id, display_name, external_account_ref, secret_handle, brightdata_allowed, status FROM accounts ORDER BY id",
+    "SELECT id, provider_id, display_name, external_account_ref, secret_handle, brightdata_allowed, status, fetch_url FROM accounts ORDER BY id",
   );
   return rows as AccountRow[];
 }
