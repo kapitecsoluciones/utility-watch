@@ -1,0 +1,40 @@
+{
+  "id": "cvwd-us",
+  "name": "Coachella Valley Water District",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "schemaVersion": "uw-plugin-v1",
+  "coreVersion": ">=0.1.0 <1.0.0",
+  "country": "US",
+  "serviceTypes": ["water"],
+  "homepage": "https://www.cvwdwater.com",
+  "entrypoint": "./src/index.ts",
+  "capabilities": ["auth.login", "bills.list", "bills.download", "bills.normalize"],
+  "auth": {
+    "type": "username-password",
+    "secretRefs": ["username", "password"]
+  },
+  "permissions": {
+    "network": ["cvwdwater.com", "*.cvwdwater.com"],
+    "artifacts": ["html", "pdf", "text"],
+    "filesystem": "artifacts-only",
+    "brightData": "supported"
+  },
+  "quality": {
+    "status": "draft",
+    "verification": "fixture-only",
+    "lastVerified": null,
+    "limitations": [
+      "Public repo ships the parser with a synthetic fixture only",
+      "Live retrieval needs the Bright Data Scraping Browser to drive the public CVWD page (not in the public repo)"
+    ]
+  },
+  "tests": {
+    "fixtures": "./fixtures",
+    "healthcheck": "npm run test:plugin"
+  },
+  "support": {
+    "maintainer": "Utility Watch Maintainers",
+    "url": "https://github.com/kapitecsoluciones/utility-watch/issues"
+  }
+}
