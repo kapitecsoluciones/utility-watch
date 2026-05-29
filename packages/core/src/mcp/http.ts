@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildMcpServer, type McpDeps } from "./server.ts";
 import { renderDashboard } from "./dashboard.ts";
+import { renderLanding } from "./landing.ts";
+import { readFile } from "node:fs/promises";
 import { parseCookies, signSession, verifySession } from "../auth/session.ts";
 import { verifyPassword } from "../auth/password.ts";
 import { getUserByEmail, getUserById, getCapabilities, listUsers, createUser } from "../services/users.ts";
@@ -13,7 +15,7 @@ import { listBills } from "../services/bills.ts";
 import { listRuns } from "../services/runs.ts";
 import { reportSummary } from "../services/reports.ts";
 import { loadManifestFile } from "../plugins/validate.ts";
-import { repoRoot } from "../paths.ts";
+import { repoRoot, coreRoot } from "../paths.ts";
 import { join } from "node:path";
 import { executeRun } from "../runner/index.ts";
 import { reviewBill } from "../services/review.ts";
@@ -74,11 +76,23 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
         return json(res, 200, { ok: true, service: "utility-watch-mcp", version: "0.1.0" });
       }
 
-      if (req.method === "GET" && (url === "/" || url === "/dashboard")) {
-        const operator = await operatorFrom(req);
-        const html = await renderDashboard(deps.pool, operator);
+      if (req.method === "GET" && url === "/") {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        return void res.end(html);
+        return void res.end(renderLanding());
+      }
+      if (req.method === "GET" && (url === "/console" || url === "/dashboard")) {
+        const operator = await operatorFrom(req);
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        return void res.end(await renderDashboard(deps.pool, operator));
+      }
+      if (req.method === "GET" && url === "/logo.png") {
+        try {
+          const buf = await readFile(join(coreRoot, "assets", "logo.png"));
+          res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
+          return void res.end(buf);
+        } catch {
+          return json(res, 404, { error: "not found" });
+        }
       }
 
       // ---- Operator auth ----
