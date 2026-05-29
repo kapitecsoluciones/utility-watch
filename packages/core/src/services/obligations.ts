@@ -28,7 +28,7 @@ export async function upsertObligationFromBill(pool: Pool, o: UpsertObligation):
   );
 }
 
-export type ObligationStatus = "paid" | "arrangement" | "cancelled" | "overdue" | "due" | "unknown";
+export type ObligationStatus = "paid" | "arrangement" | "cancelled" | "overdue" | "due_soon" | "due" | "unknown";
 
 interface StatusInput {
   current_balance: number | string | null;
@@ -51,6 +51,10 @@ export function computeStatus(o: StatusInput, today: string): ObligationStatus {
     dueIso = `${today.slice(0, 7)}-${String(o.due_day).padStart(2, "0")}`;
   }
   if (dueIso && dueIso < today) return "overdue";
+  if (dueIso) {
+    const days = (Date.parse(dueIso) - Date.parse(today)) / 86400000;
+    if (days <= 7) return "due_soon";
+  }
   return "due";
 }
 
