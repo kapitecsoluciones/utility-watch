@@ -1,10 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { Pool, RowDataPacket } from "mysql2/promise";
+import type { Pool } from "mysql2/promise";
 import type { AppConfig } from "../config/index.ts";
 import { readRegistry, listInstalled } from "../services/providers.ts";
 import { listAccounts } from "../services/accounts.ts";
 import { listBills, getBill } from "../services/bills.ts";
+import { getRun, getRunDetail } from "../services/runs.ts";
 import { executeRun } from "../runner/index.ts";
 import { reviewBill } from "../services/review.ts";
 import { exportBill } from "../services/exporter.ts";
@@ -84,18 +85,9 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       inputSchema: { run_id: z.number().int().positive() },
     },
     async ({ run_id }) => {
-      const [runs] = await pool.query<RowDataPacket[]>("SELECT * FROM runs WHERE id = ?", [run_id]);
-      const run = runs[0];
-      if (!run) return err(`run ${run_id} not found`);
-      const [artifacts] = await pool.query<RowDataPacket[]>(
-        "SELECT id, type, path, sha256, redaction_status FROM artifacts WHERE run_id = ?",
-        [run_id],
-      );
-      const [logs] = await pool.query<RowDataPacket[]>(
-        "SELECT level, event, message FROM run_logs WHERE run_id = ? ORDER BY id",
-        [run_id],
-      );
-      return ok({ run, artifacts, log: logs });
+      const detail = await getRunDetail(pool, run_id);
+      if (!detail) return err(`run ${run_id} not found`);
+      return ok({ run: detail.run, artifacts: detail.artifacts, log: detail.logs });
     },
   );
 
@@ -134,8 +126,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       inputSchema: { run_id: z.number().int().positive() },
     },
     async ({ run_id }) => {
-      const [runs] = await pool.query<RowDataPacket[]>("SELECT * FROM runs WHERE id = ?", [run_id]);
-      const run = runs[0];
+      const run = await getRun(pool, run_id);
       if (!run) return err(`run ${run_id} not found`);
       let suggestion = "No action needed.";
       if (run.status === "failed") {
