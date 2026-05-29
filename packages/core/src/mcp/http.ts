@@ -79,21 +79,22 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
   const httpServer = createServer(async (req, res) => {
     try {
       const url = req.url ?? "/";
+      const path = url.split("?")[0];
 
-      if (req.method === "GET" && url === "/health") {
+      if (req.method === "GET" && path === "/health") {
         return json(res, 200, { ok: true, service: "utility-watch-mcp", version: "0.1.0" });
       }
 
-      if (req.method === "GET" && url === "/") {
+      if (req.method === "GET" && path === "/") {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         return void res.end(renderLanding());
       }
-      if (req.method === "GET" && (url === "/console" || url === "/dashboard")) {
+      if (req.method === "GET" && (path === "/console" || path === "/dashboard")) {
         const operator = await operatorFrom(req);
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         return void res.end(await renderDashboard(deps.pool, operator));
       }
-      if (req.method === "GET" && (url === "/logo.png" || url.startsWith("/logo.png?"))) {
+      if (req.method === "GET" && path === "/logo.png") {
         try {
           const buf = await readFile(join(coreRoot, "assets", "logo.png"));
           res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
