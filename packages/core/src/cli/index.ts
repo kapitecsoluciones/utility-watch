@@ -303,6 +303,28 @@ async function cmdSecretsRm(rest: string[]): Promise<number> {
   }
 }
 
+async function cmdRunAll(): Promise<number> {
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    const accounts = await listAccounts(pool);
+    let ok = 0, fail = 0, bills = 0;
+    for (const a of accounts) {
+      try {
+        const o = await executeRun(pool, { accountId: a.id, artifactsDir: config.artifactsDir, confidenceThreshold: config.reviewConfidenceThreshold, brightData: config.brightData, secretsKey: config.secretsKey });
+        if (o.status === "failed") { fail++; process.stdout.write(`  x ${a.provider_id} #${a.id}: ${o.errorMessage}\n`); }
+        else { ok++; bills += o.billCount ?? (o.billId ? 1 : 0); process.stdout.write(`  + ${a.provider_id} #${a.id}: ${o.billCount ?? 1} bill(s)\n`); }
+      } catch (e) {
+        fail++; process.stdout.write(`  x ${a.provider_id} #${a.id}: ${(e as Error).message}\n`);
+      }
+    }
+    process.stdout.write(`\nruns:all done - ${ok} ok, ${fail} failed, ${bills} bill(s)\n`);
+    return 0;
+  } finally {
+    await pool.end();
+  }
+}
+
 async function cmdAccountsList(): Promise<number> {
   const config = loadConfigOrExit();
   const pool = createPool(config.db);
@@ -589,6 +611,8 @@ async function main(): Promise<number> {
       return cmdAccountsList();
     case "run":
       return cmdRun(flags);
+    case "runs:all":
+      return cmdRunAll();
     case "runs:show":
       return cmdRunsShow(rest);
     case "bills:list":
