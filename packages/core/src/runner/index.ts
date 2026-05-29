@@ -9,6 +9,7 @@ import { selectAdapter } from "../adapters/select.ts";
 import { openBrightDataBrowser, fetchViaBrightData } from "../adapters/brightdata.ts";
 import { openLocalBrowser } from "../adapters/local-browser.ts";
 import { getSecret as getStoredSecret, parseSecretsKey } from "../services/secrets.ts";
+import { upsertObligationFromBill } from "../services/obligations.ts";
 import { getAccount } from "../services/accounts.ts";
 import { getRegistryProvider, getProviderManifest } from "../services/providers.ts";
 import { parseDeclarative } from "../plugins/declarative.ts";
@@ -213,6 +214,14 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
       const billId = billRes.insertId;
       await pool.query("INSERT INTO reviews (bill_id, status) VALUES (?, 'pending')", [billId]);
       billIds.push(billId);
+      await upsertObligationFromBill(pool, {
+        providerId: account.provider_id,
+        accountRef: billAccountRef ?? "",
+        label: candidate.label ?? null,
+        amountDue: bill.amountDue,
+        dueDate: toIsoDateOrNull(bill.dueDate),
+        runId,
+      });
       if (bill.confidence < minConfidence) minConfidence = bill.confidence;
       if (bill.confidence < opts.confidenceThreshold) {
         await log("warn", "bill.low_confidence", `bill ${billId} confidence ${bill.confidence} < threshold ${opts.confidenceThreshold}`, {
@@ -309,15 +318,19 @@ export async function ingestArtifact(pool: Pool, opts: IngestOptions): Promise<R
       [runId, artifact.contentType === "json" ? "json" : "text", artifactPath, artifact.contentType === "json" ? "application/json" : "text/plain", sha],
     );
     const artifactId = artRes.insertId;
+    const ingestRef = bill.accountRef && bill.accountRef !== "unknown" ? bill.accountRef : account.external_account_ref ?? null;
     const [billRes] = await pool.query<ResultSetHeader>(
       `INSERT INTO bills
-         (run_id, account_id, provider_id, statement_date, period_start, period_end, due_date,
+         (run_id, account_id, provider_id, account_ref, statement_date, period_start, period_end, due_date,
           amount_due, currency, normalized_json, confidence_score, source_url, primary_artifact_id, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'needs_review')`,
-      [runId, account.id, account.provider_id, toIsoDateOrNull(bill.statementDate), toIsoDateOrNull(bill.periodStart), toIsoDateOrNull(bill.periodEnd), toIsoDateOrNull(bill.dueDate), bill.amountDue, bill.currency, JSON.stringify(bill), bill.confidence, bill.sourceUrl, artifactId],
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'needs_review')`,
+      [runId, account.id, account.provider_id, ingestRef, toIsoDateOrNull(bill.statementDate), toIsoDateOrNull(bill.periodStart), toIsoDateOrNull(bill.periodEnd), toIsoDateOrNull(bill.dueDate), bill.amountDue, bill.currency, JSON.stringify(bill), bill.confidence, bill.sourceUrl, artifactId],
     );
     const billId = billRes.insertId;
     await pool.query("INSERT INTO reviews (bill_id, status) VALUES (?, 'pending')", [billId]);
+    if (ingestRef) {
+      await upsertObligationFromBill(pool, { providerId: account.provider_id, accountRef: ingestRef, label: null, amountDue: bill.amountDue, dueDate: toIsoDateOrNull(bill.dueDate), runId });
+    }
     if (bill.confidence < opts.confidenceThreshold) {
       await log("warn", "bill.low_confidence", `confidence ${bill.confidence} < threshold ${opts.confidenceThreshold}`, { code: "bill.low_confidence" });
     }
