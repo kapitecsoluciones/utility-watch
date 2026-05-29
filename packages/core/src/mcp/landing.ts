@@ -1,6 +1,60 @@
-/** Public marketing landing page. Static; sells the platform and routes to the console, MCP, and GitHub. Light theme. */
+/** Landing page. Platform marketing by default; a clean client-branded page when BRAND_MODE=client. */
 export function renderLanding(): string {
+  if ((process.env.BRAND_MODE ?? "").toLowerCase() === "client") return clientLanding();
   return LANDING;
+}
+
+/** Client-branded landing: logo + what it does in broad strokes + sign-in. No platform/internal framing. */
+function clientLanding(): string {
+  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
+  const brand = esc(process.env.BRAND_NAME || "Servicios");
+  const tagline = esc(process.env.BRAND_TAGLINE || "Control de los recibos de servicios de todas tus propiedades en un solo lugar.");
+  const year = "2026";
+  return `<!doctype html>
+<html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${brand} · Servicios</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/logo.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  body{background:#f8fafc;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0}
+  h1,h2,.head{font-family:'Space Grotesk',Inter,sans-serif;letter-spacing:-.02em}
+  .hero{background:radial-gradient(1100px 520px at 50% -10%, #ecfeff 0, #f8fafc 60%)}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05)}
+  .btn{background:#0891b2;color:#fff;font-weight:700;padding:12px 26px;border-radius:10px;text-decoration:none;display:inline-block}
+  .btn:hover{background:#0e7490}
+  .logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#0891b2,#0e7490);display:flex;align-items:center;justify-content:center}
+</style></head>
+<body class="hero">
+<header class="max-w-5xl mx-auto px-6 py-5 flex items-center gap-3">
+  <div class="logo head font-bold text-white text-xl">${brand.slice(0, 1)}</div>
+  <span class="head font-bold text-xl">${brand}</span>
+  <span class="text-slate-400">·</span><span class="text-slate-500">Servicios</span>
+  <div class="flex-1"></div>
+  <a href="/console" class="text-sm font-semibold" style="color:#0e7490">Entrar →</a>
+</header>
+
+<main class="max-w-3xl mx-auto px-6 pt-16 pb-10 text-center">
+  <h1 class="text-4xl md:text-5xl font-bold leading-tight">Tus servicios, al día y en un solo lugar</h1>
+  <p class="text-slate-600 text-lg mt-5 max-w-2xl mx-auto">${tagline}</p>
+  <div class="mt-8"><a href="/console" class="btn">Entrar al panel</a></div>
+</main>
+
+<section class="max-w-5xl mx-auto px-6 pb-20 grid md:grid-cols-2 gap-4">
+  ${feature("Saldo al día por propiedad", "Cuánto se debe ahora mismo en cada propiedad — agua, luz, gas, basura — sumado y desglosado.")}
+  ${feature("Historial de cada cuenta", "El registro de estados de cuenta y pagos de cada servicio a lo largo del tiempo.")}
+  ${feature("Vencimientos y alertas", "Qué vence y cuándo, con aviso de lo que ya está vencido, en un calendario claro.")}
+  ${feature("Reportes y exportación", "Totales por propiedad y categoría, con exportación para tu contabilidad.")}
+</section>
+
+<footer class="border-t border-slate-200 py-6 text-center text-slate-400 text-sm">${brand} · ${year}</footer>
+</body></html>`;
+}
+
+function feature(title: string, body: string): string {
+  return `<div class="card p-6"><div class="head font-semibold text-lg">${title}</div><p class="text-slate-600 mt-2">${body}</p></div>`;
 }
 
 const GH = "https://github.com/kapitecsoluciones/utility-watch";

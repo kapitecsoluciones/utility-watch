@@ -11,7 +11,13 @@ export interface DashboardViewer {
  * server-side; values are HTML-escaped client-side before insertion. Light theme.
  */
 export async function renderDashboard(_pool: Pool, _viewer: DashboardViewer | null): Promise<string> {
-  return SHELL;
+  const brand = process.env.BRAND_NAME || "Utility Watch";
+  const client = (process.env.BRAND_MODE ?? "").toLowerCase() === "client";
+  const subtitle = client ? "servicios" : "operator console";
+  return SHELL
+    .replace(/Utility Watch/g, brand.replace(/[<>]/g, ""))
+    .replace(/operator console/g, subtitle)
+    .replace("<body>", `<body><script>window.__CLIENT=${client};</script>`);
 }
 
 const SHELL = `<!doctype html>
@@ -131,10 +137,12 @@ async function viewOverview(){
   if(tok){ tokHtml = tok.enabled
     ? '<div class="mt-3 text-sm"><span class="text-slate-500">Agent token (Authorization: Bearer):</span> <code>'+esc(tok.token)+'</code></div>'
     : '<div class="mt-3 text-sm text-slate-500">Agent token: <b>not set</b> — the /mcp endpoint is open. Set <code>MCP_AUTH_TOKEN</code> to require a bearer token.</div>'; }
+  const mcpCard = window.__CLIENT ? '' :
+   '<div class="card p-5 mt-4"><div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Agent Interface (MCP)</div><div class="mono text-cyan-700 text-sm">'+esc(location.origin)+'/mcp</div><div class="text-slate-500 text-sm mt-2">Tools: list_providers · list_bills · run_retrieval · get_bill · diagnose_run · export_bill/propose_review (gated)</div>'+tokHtml+'</div>';
   return panel('Overview',
    kpiHtml+
    '<div class="text-xs uppercase tracking-widest text-slate-500 mb-2">System</div><div class="grid grid-cols-3 gap-3">'+card('Providers',t.providers)+card('Accounts',t.accounts)+card('Bills',t.bills)+card('Runs',t.runs)+card('Users',t.users)+card('Total due','USD '+Number(t.total_due).toFixed(2))+'</div>'+
-   '<div class="card p-5 mt-4"><div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Agent Interface (MCP)</div><div class="mono text-cyan-700 text-sm">'+esc(location.origin)+'/mcp</div><div class="text-slate-500 text-sm mt-2">Tools: list_providers · list_bills · run_retrieval · get_bill · diagnose_run · export_bill/propose_review (gated)</div>'+tokHtml+'</div>');
+   mcpCard);
 }
 
 async function viewAudit(){
