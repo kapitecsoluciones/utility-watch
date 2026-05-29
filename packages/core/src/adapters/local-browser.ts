@@ -22,6 +22,7 @@ export async function openLocalBrowser(): Promise<BrowserSession> {
       "--disable-dev-shm-usage",
       "--disable-gpu",
       "--disable-blink-features=AutomationControlled",
+      "--disable-http2", // some portals (ASP.NET/EZ-Pay) break over HTTP/2 → navigation errors
     ],
   });
   const context = await browser.newContext({
