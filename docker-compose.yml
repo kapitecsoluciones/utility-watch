@@ -33,6 +33,28 @@ services:
     volumes:
       - utility_watch_data:/app/data
 
+  mcp:
+    build: .
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-utility_watch}:${MYSQL_PASSWORD:-utility_watch}@mysql:3306/${MYSQL_DATABASE:-utility_watch}
+      ARTIFACTS_DIR: /app/data/artifacts
+      EXPORTS_DIR: /app/data/exports
+      MCP_PORT: "8080"
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
+      AGENT_CAPABILITIES: ${AGENT_CAPABILITIES:-}
+      LOG_LEVEL: info
+      BRIGHTDATA_ENABLED: "false"
+    command: sh -c "npm run -s utility-watch -- db:migrate && npm run -s utility-watch -- demo:seed && npm run -s utility-watch -- mcp"
+    ports:
+      - "${MCP_HOST_PORT:-8089}:8080"
+    volumes:
+      - utility_watch_data:/app/data
+    restart: unless-stopped
+
 volumes:
   utility_watch_mysql:
   utility_watch_data:
