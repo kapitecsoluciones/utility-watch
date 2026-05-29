@@ -58,7 +58,12 @@ export interface ProviderManifest {
   country: string;
   serviceTypes: ServiceType[];
   homepage?: string;
-  entrypoint: string;
+  /** Required for kind "code"; omitted for "declarative". */
+  entrypoint?: string;
+  /** "code" (entrypoint plugin, default) or "declarative" (manifest + parser, no code). */
+  kind?: "code" | "declarative";
+  /** Declarative parser spec (uw-parser-v1) — present when kind is "declarative". */
+  parser?: import("./declarative.ts").ParserSpec;
   capabilities: Capability[];
   auth: {
     type: string;

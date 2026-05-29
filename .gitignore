@@ -23,3 +23,6 @@ tmp/
 *.sqlite3
 
 .gstack/
+
+# Local agent/skill state
+.claude/

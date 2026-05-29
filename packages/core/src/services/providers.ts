@@ -31,13 +31,25 @@ export interface InstalledProvider {
   utility_type: string;
   registry_status: string;
   current_version: string | null;
+  kind: string;
 }
 
 export async function listInstalled(pool: Pool): Promise<InstalledProvider[]> {
   const [rows] = await pool.query<RowDataPacket[]>(
-    "SELECT id, name, country, utility_type, registry_status, current_version FROM providers ORDER BY id",
+    "SELECT id, name, country, utility_type, registry_status, current_version, kind FROM providers ORDER BY id",
   );
   return rows as InstalledProvider[];
+}
+
+/** Latest stored manifest for a provider (for declarative parsing / inspection). */
+export async function getProviderManifest(pool: Pool, providerId: string): Promise<ProviderManifest | null> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT manifest_json FROM provider_versions WHERE provider_id = ? ORDER BY id DESC LIMIT 1",
+    [providerId],
+  );
+  const raw = rows[0]?.manifest_json;
+  if (!raw) return null;
+  return (typeof raw === "string" ? JSON.parse(raw) : raw) as ProviderManifest;
 }
 
 /** Register (or update) a provider and a versioned manifest snapshot. Idempotent. */
@@ -47,12 +59,12 @@ export async function installProvider(pool: Pool, manifest: ProviderManifest): P
   try {
     await conn.beginTransaction();
     await conn.query(
-      `INSERT INTO providers (id, name, country, utility_type, registry_status, current_version)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO providers (id, name, country, utility_type, registry_status, current_version, kind)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE name = VALUES(name), country = VALUES(country),
          utility_type = VALUES(utility_type), registry_status = VALUES(registry_status),
-         current_version = VALUES(current_version)`,
-      [manifest.id, manifest.name, manifest.country, primaryType, manifest.quality.status, manifest.version],
+         current_version = VALUES(current_version), kind = VALUES(kind)`,
+      [manifest.id, manifest.name, manifest.country, primaryType, manifest.quality.status, manifest.version, manifest.kind ?? "code"],
     );
     await conn.query(
       `INSERT INTO provider_versions (provider_id, version, manifest_json, verification_level)
