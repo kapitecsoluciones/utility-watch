@@ -76,7 +76,7 @@ function renderLogin(){
   document.getElementById('password').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('loginBtn').click(); });
 }
 
-const SECTIONS = [['overview','Overview'],['properties','Properties'],['obligations','Accounts & balances'],['alerts','Alerts'],['providers','Providers'],['accounts','Logins'],['bills','Bills'],['history','History'],['users','Users'],['audit','Audit'],['reports','Reports']];
+const SECTIONS = [['overview','Overview'],['properties','Properties'],['obligations','Accounts & balances'],['alerts','Alerts'],['health','Scraper health'],['providers','Providers'],['accounts','Logins'],['bills','Bills'],['history','History'],['users','Users'],['audit','Audit'],['reports','Reports']];
 
 function renderApp(){
   const app=document.getElementById('app'); app.replaceChildren();
@@ -107,21 +107,30 @@ async function show(id){
     if(id==='properties'){ main.innerHTML = await viewProperties(); bindProperties(); return; }
     if(id==='obligations'){ main.innerHTML = await viewObligations(); bindObligations(); return; }
     if(id==='alerts'){ main.innerHTML = await viewAlerts(); bindObligations(); return; }
+    if(id==='health'){ main.innerHTML = await viewHealth(); return; }
     if(id==='audit'){ main.innerHTML = await viewAudit(); return; }
     if(id==='reports'){ main.innerHTML = await viewReports(); return; }
   }catch(e){ main.innerHTML = '<div class="text-red-600">'+esc(e.message)+'</div>'; }
 }
 
 async function viewOverview(){
-  const o = await api('/api/overview'); const t=o.totals;
+  const r = await Promise.all([api('/api/overview'), api('/api/kpis').catch(()=>null)]);
+  const o=r[0], k=r[1]; const t=o.totals;
   var tok=null; if(can('users.manage')){ try{ tok=await api('/api/mcp-token'); }catch(_){} }
-  const card=(label,val)=>'<div class="card p-4"><div class="text-slate-500 text-xs uppercase tracking-wide">'+label+'</div><div class="text-2xl font-bold mt-1">'+val+'</div></div>';
+  const card=(label,val,color)=>'<div class="card p-4"><div class="text-slate-500 text-xs uppercase tracking-wide">'+label+'</div><div class="text-2xl font-bold mt-1"'+(color?' style="color:'+color+'"':'')+'>'+val+'</div></div>';
+  var kpiHtml='';
+  if(k){ kpiHtml = '<div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Money</div><div class="grid grid-cols-4 gap-3 mb-5">'+
+    card('Total owed','USD '+Number(k.totalOwed).toFixed(2))+
+    card('Overdue ('+k.overdueCount+')','USD '+Number(k.overdueTotal).toFixed(2),'#b91c1c')+
+    card('Paid this month','USD '+Number(k.paidThisMonth).toFixed(2),'#047857')+
+    card('Accounts owing','+'+k.dueCount+'/'+k.accountCount)+'</div>'; }
   var tokHtml='';
   if(tok){ tokHtml = tok.enabled
     ? '<div class="mt-3 text-sm"><span class="text-slate-500">Agent token (Authorization: Bearer):</span> <code>'+esc(tok.token)+'</code></div>'
     : '<div class="mt-3 text-sm text-slate-500">Agent token: <b>not set</b> — the /mcp endpoint is open. Set <code>MCP_AUTH_TOKEN</code> to require a bearer token.</div>'; }
   return panel('Overview',
-   '<div class="grid grid-cols-3 gap-3">'+card('Providers',t.providers)+card('Accounts',t.accounts)+card('Bills',t.bills)+card('Runs',t.runs)+card('Users',t.users)+card('Total due','USD '+Number(t.total_due).toFixed(2))+'</div>'+
+   kpiHtml+
+   '<div class="text-xs uppercase tracking-widest text-slate-500 mb-2">System</div><div class="grid grid-cols-3 gap-3">'+card('Providers',t.providers)+card('Accounts',t.accounts)+card('Bills',t.bills)+card('Runs',t.runs)+card('Users',t.users)+card('Total due','USD '+Number(t.total_due).toFixed(2))+'</div>'+
    '<div class="card p-5 mt-4"><div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Agent Interface (MCP)</div><div class="mono text-cyan-700 text-sm">'+esc(location.origin)+'/mcp</div><div class="text-slate-500 text-sm mt-2">Tools: list_providers · list_bills · run_retrieval · get_bill · diagnose_run · export_bill/propose_review (gated)</div>'+tokHtml+'</div>');
 }
 
@@ -194,6 +203,14 @@ function bindUsers(){
 }
 
 function oblPill(s){ var c=({overdue:'#b91c1c',due:'#b45309',paid:'#047857',arrangement:'#0e7490',cancelled:'#64748b',unknown:'#94a3b8'})[s]||'#64748b'; return '<span class="pill" style="color:'+c+';border-color:'+c+'55">'+esc(s)+'</span>'; }
+function oblBadges(o){ var b=''; if(+o.is_autopay) b+=' <span class="pill" title="On autopay — do not pay manually" style="color:#0e7490;border-color:#0891b255">🔁 auto</span>'; if(+o.paid_by_tenant) b+=' <span class="pill" title="Paid by tenant" style="color:#475569;border-color:#94a3b855">👤 tenant</span>'; if(+o.is_payment_arrangement) b+=' <span class="pill" title="Payment arrangement" style="color:#b45309;border-color:#b4530955">plan</span>'; return b; }
+
+async function viewHealth(){
+  const h = await api('/api/health');
+  const pill=(ok,s)=> ok ? '<span class="pill st-approved">ok</span>' : '<span class="pill st-rejected">'+esc(s)+'</span>';
+  const rows = h.map(x=>'<tr><td><code>'+esc(x.provider_id)+'</code></td><td>'+x.accounts+'</td><td class="text-slate-500 mono text-xs">'+esc(String(x.last_success||'—').slice(0,16))+'</td><td class="text-slate-500 mono text-xs">'+esc(String(x.last_run||'—').slice(0,16))+'</td><td>'+x.failed+'/'+x.total+'</td><td>'+pill(x.healthy,x.last_status)+'</td></tr>').join('');
+  return panel('Scraper health', '<p class="text-slate-500 text-sm mb-3">Last successful retrieval per portal. Red = the last run failed — the portal may have changed or credentials expired.</p>'+tbl([{h:'Provider'},{h:'Accounts'},{h:'Last success'},{h:'Last run'},{h:'Failed/Total'},{h:'Status'}], rows));
+}
 
 async function viewAlerts(){
   const obs = await api('/api/obligations?status=overdue');
@@ -224,15 +241,30 @@ async function viewObligations(){
   const params=[]; if(filt) params.push('property='+filt.id); if(window.__oblSearch) params.push('search='+encodeURIComponent(window.__oblSearch));
   const obs = await api('/api/obligations'+(params.length?('?'+params.join('&')):''));
   const grand = obs.reduce((s,o)=>s+Number(o.current_balance||0),0);
-  const rows = obs.map(o=>'<tr class="cursor-pointer hover:bg-slate-50" data-obl="'+o.id+'"><td><code>'+esc(o.provider_id)+'</code></td><td>'+esc(o.account_ref)+'</td><td class="text-slate-500">'+esc(o.property_name||'—')+'</td><td class="text-right font-semibold">'+(o.current_balance==null?'—':'USD '+Number(o.current_balance).toFixed(2))+'</td><td class="text-slate-500">'+esc(o.current_due_date||'—')+'</td><td>'+oblPill(o.status)+'</td></tr>').join('');
+  const gmode = window.__oblGroup || (filt?'none':'property'); // property | category | none
+  const cell = (o)=>'<td><code>'+esc(o.provider_id)+'</code></td><td>'+esc(o.account_ref)+'</td><td class="text-slate-500">'+esc(o.property_name||'—')+'</td><td class="text-right font-semibold">'+(o.current_balance==null?'—':'USD '+Number(o.current_balance).toFixed(2))+'</td><td class="text-slate-500">'+esc(o.current_due_date||'—')+'</td><td>'+oblPill(o.status)+oblBadges(o)+'</td>';
+  var body;
+  if(gmode==='none'){
+    body = obs.map(o=>'<tr class="cursor-pointer hover:bg-slate-50" data-obl="'+o.id+'">'+cell(o)+'</tr>').join('');
+  } else {
+    const keyFn = gmode==='category' ? (o=>o.utility_type||'(uncategorized)') : (o=>o.property_name||'(unassigned)');
+    const groups={}; obs.forEach(o=>{const k=keyFn(o); (groups[k]=groups[k]||[]).push(o);});
+    body = Object.keys(groups).sort().map(k=>{
+      const sub=groups[k].reduce((s,o)=>s+Number(o.current_balance||0),0);
+      return '<tr style="background:#f1f5f9"><td colspan="5" class="font-semibold">'+esc(k)+' <span class="text-slate-400">('+groups[k].length+')</span></td><td class="text-right font-semibold">USD '+sub.toFixed(2)+'</td></tr>'+
+        groups[k].map(o=>'<tr class="cursor-pointer hover:bg-slate-50" data-obl="'+o.id+'">'+cell(o)+'</tr>').join('');
+    }).join('');
+  }
   const hdr = filt?'<div class="mb-3 text-sm"><button class="btn-ghost" id="obl-clear">← All properties</button> <b>'+esc(filt.name)+'</b></div>':'';
+  const tog = (m,l)=>'<button class="btn-ghost'+(gmode===m?' nav active':'')+'" data-group="'+m+'">'+l+'</button>';
   return panel('Accounts & balances',
-    hdr+'<div class="card p-4 mb-4 flex gap-4 items-end"><div><div class="text-xs text-slate-500 uppercase">Owed'+(filt?' (this property)':'')+'</div><div class="text-2xl font-bold">USD '+grand.toFixed(2)+'</div></div><div class="flex-1"></div><a class="btn-ghost" href="/api/export.csv">Export CSV</a><div><div class="text-xs text-slate-500 mb-1">Search</div><input id="obl-search" class="field" placeholder="provider / account / property" value="'+esc(window.__oblSearch||'')+'"></div></div>'+
-    tbl([{h:'Provider'},{h:'Account'},{h:'Property'},{h:'Owed',r:1},{h:'Due'},{h:'Status'}], rows));
+    hdr+'<div class="card p-4 mb-4 flex gap-4 items-end"><div><div class="text-xs text-slate-500 uppercase">Owed'+(filt?' (this property)':'')+'</div><div class="text-2xl font-bold">USD '+grand.toFixed(2)+'</div></div><div class="flex-1"></div><div class="flex gap-1 items-center"><span class="text-xs text-slate-500 mr-1">Group:</span>'+tog('property','Property')+tog('category','Category')+tog('none','None')+'</div><a class="btn-ghost" href="/api/export.csv">CSV</a><div><div class="text-xs text-slate-500 mb-1">Search</div><input id="obl-search" class="field" placeholder="provider / account / property" value="'+esc(window.__oblSearch||'')+'"></div></div>'+
+    tbl([{h:'Provider'},{h:'Account'},{h:'Property'},{h:'Owed',r:1},{h:'Due'},{h:'Status'}], body));
 }
 function bindObligations(){
   const clr=document.getElementById('obl-clear'); if(clr) clr.onclick=()=>{ window.__oblProp=null; show('obligations'); };
   const s=document.getElementById('obl-search'); if(s) s.onchange=()=>{ window.__oblSearch=s.value; show('obligations'); };
+  document.querySelectorAll('[data-group]').forEach(b=>b.onclick=()=>{ window.__oblGroup=b.dataset.group; show('obligations'); });
   document.querySelectorAll('[data-obl]').forEach(r=>r.onclick=()=>showObligation(r.dataset.obl));
 }
 

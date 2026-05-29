@@ -109,10 +109,11 @@ export async function listObligations(pool: Pool, f: ObligationFilters, today: s
   const order = f.order === "DESC" ? "DESC" : "ASC";
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const [rows] = await pool.query<ObligationRow[]>(
-    `SELECT o.*, p.name AS property_name, c.name AS category_name
+    `SELECT o.*, p.name AS property_name, c.name AS category_name, pr.utility_type AS utility_type
      FROM obligations o
      LEFT JOIN properties p ON o.property_id = p.id
      LEFT JOIN categories c ON o.category_id = c.id
+     LEFT JOIN providers pr ON o.provider_id = pr.id
      ${whereSql} ORDER BY ${sortCol} ${order}`,
     params,
   );
@@ -123,10 +124,11 @@ export async function listObligations(pool: Pool, f: ObligationFilters, today: s
 
 export async function getObligation(pool: Pool, id: number, today: string) {
   const [rows] = await pool.query<ObligationRow[]>(
-    `SELECT o.*, p.name AS property_name, c.name AS category_name
+    `SELECT o.*, p.name AS property_name, c.name AS category_name, pr.utility_type AS utility_type
      FROM obligations o
      LEFT JOIN properties p ON o.property_id = p.id
      LEFT JOIN categories c ON o.category_id = c.id
+     LEFT JOIN providers pr ON o.provider_id = pr.id
      WHERE o.id = ?`,
     [id],
   );
@@ -169,4 +171,56 @@ export async function setObligationMeta(pool: Pool, id: number, meta: Record<str
   if (!cols.length) return;
   params.push(id);
   await pool.query(`UPDATE obligations SET ${cols.join(", ")} WHERE id = ?`, params);
+}
+
+/** At-a-glance financial KPIs for the Overview. */
+export async function financialKpis(pool: Pool, today: string) {
+  const obs = await listObligations(pool, {}, today);
+  const active = obs.filter((o) => !o.is_cancelled);
+  const sum = (rows: typeof active) => rows.reduce((s, o) => s + Number(o.current_balance || 0), 0);
+  const overdue = active.filter((o) => o.status === "overdue");
+  const due = active.filter((o) => o.status === "due");
+  const monthStart = today.slice(0, 8) + "01";
+  const [pm] = await pool.query<RowDataPacket[]>(
+    "SELECT COALESCE(SUM(amount),0) paid, COUNT(*) cnt FROM payments WHERE payment_date >= ?",
+    [monthStart],
+  );
+  return {
+    totalOwed: sum(active),
+    overdueTotal: sum(overdue),
+    overdueCount: overdue.length,
+    dueCount: due.length,
+    accountCount: active.length,
+    paidThisMonth: Number(pm[0]?.paid ?? 0),
+    paymentCount: Number(pm[0]?.cnt ?? 0),
+  };
+}
+
+/** Per-provider scraper health: last run, last success, failures, latest status, accounts. */
+export async function providerHealth(pool: Pool) {
+  const [agg] = await pool.query<RowDataPacket[]>(
+    `SELECT provider_id, MAX(started_at) AS last_run,
+            MAX(CASE WHEN status <> 'failed' THEN started_at END) AS last_success,
+            SUM(status = 'failed') AS failed, COUNT(*) AS total
+     FROM runs GROUP BY provider_id ORDER BY provider_id`,
+  );
+  const [latest] = await pool.query<RowDataPacket[]>(
+    `SELECT r.provider_id, r.status FROM runs r
+     JOIN (SELECT provider_id, MAX(id) mid FROM runs GROUP BY provider_id) m ON r.id = m.mid`,
+  );
+  const lastStatus: Record<string, string> = {};
+  for (const r of latest) lastStatus[r.provider_id] = r.status;
+  const [acc] = await pool.query<RowDataPacket[]>("SELECT provider_id, COUNT(*) n FROM accounts GROUP BY provider_id");
+  const accCount: Record<string, number> = {};
+  for (const r of acc) accCount[r.provider_id] = Number(r.n);
+  return agg.map((r) => ({
+    provider_id: r.provider_id,
+    last_run: r.last_run,
+    last_success: r.last_success,
+    failed: Number(r.failed),
+    total: Number(r.total),
+    accounts: accCount[r.provider_id] ?? 0,
+    last_status: lastStatus[r.provider_id] ?? "?",
+    healthy: (lastStatus[r.provider_id] ?? "") !== "failed",
+  }));
 }
