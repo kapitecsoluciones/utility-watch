@@ -15,6 +15,7 @@ import { listBills } from "../services/bills.ts";
 import { listRuns } from "../services/runs.ts";
 import { reportSummary } from "../services/reports.ts";
 import { loadManifestFile, validateManifest } from "../plugins/validate.ts";
+import { logAudit, listAudit } from "../services/audit.ts";
 import { repoRoot, coreRoot } from "../paths.ts";
 import { join, resolve } from "node:path";
 
@@ -25,6 +26,27 @@ const posInt = (v: unknown): number | null => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
+
+/** Best-effort client IP (honours a single reverse proxy hop). */
+function clientIp(req: IncomingMessage): string | null {
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff) return (xff.split(",")[0] ?? "").trim();
+  return req.socket.remoteAddress ?? null;
+}
+
+// In-memory login throttle (single-instance). Locks an email+IP pair after repeated failures.
+const LOGIN_MAX_FAILS = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const loginAttempts = new Map<string, { fails: number; until: number }>();
+
+/** Returns a human message if the password is too weak, else null. */
+function passwordIssue(pw: string): string | null {
+  if (pw.length < 10) return "password must be at least 10 characters";
+  if (!/[a-z]/.test(pw) || !/[A-Z]/.test(pw) || !/[0-9]/.test(pw)) {
+    return "password must include a lowercase letter, an uppercase letter, and a digit";
+  }
+  return null;
+}
 import { executeRun, ingestArtifact } from "../runner/index.ts";
 import { reviewBill } from "../services/review.ts";
 import { exportBill } from "../services/exporter.ts";
@@ -106,15 +128,35 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
 
       // ---- Operator auth ----
       if (req.method === "POST" && url === "/login") {
+        const ip = clientIp(req);
         const body = (await readJson(req)) as { email?: string; password?: string } | undefined;
+        const throttleKey = `${(body?.email ?? "").toLowerCase()}|${ip ?? ""}`;
+        const now = Date.now();
+        const rec = loginAttempts.get(throttleKey);
+        if (rec && rec.until > now) {
+          await logAudit(deps.pool, { actor: body?.email ?? null, action: "login.locked", outcome: "deny", ip, targetType: "session" });
+          return json(res, 429, { ok: false, error: "too many attempts; try again later" });
+        }
         const user = body?.email ? await getUserByEmail(deps.pool, body.email) : null;
         const hash = user && user.status === "active" ? user.password_hash : DUMMY_HASH;
         const okPw = body?.password ? verifyPassword(body.password, hash) : false;
         if (!user || user.status !== "active" || !okPw) {
+          // accumulate across attempts; reset only after a prior lock window has expired
+          const prevFails = rec && !(rec.until && rec.until <= now) ? rec.fails : 0;
+          const fails = prevFails + 1;
+          loginAttempts.set(throttleKey, { fails, until: fails >= LOGIN_MAX_FAILS ? now + LOGIN_LOCK_MS : 0 });
+          await logAudit(deps.pool, { actor: body?.email ?? null, action: "login.fail", outcome: "fail", ip, targetType: "session", detail: { fails } });
           return json(res, 401, { ok: false, error: "invalid credentials" });
         }
-        const cookie = `uw_session=${signSession(user.id)}; HttpOnly; Path=/; SameSite=Strict; Max-Age=43200${secure ? "; Secure" : ""}`;
-        res.writeHead(200, { "content-type": "application/json", "set-cookie": cookie });
+        loginAttempts.delete(throttleKey);
+        const csrf = randomUUID();
+        const base = `Path=/; SameSite=Strict${secure ? "; Secure" : ""}`;
+        const cookies = [
+          `uw_session=${signSession(user.id)}; HttpOnly; Max-Age=43200; ${base}`,
+          `uw_csrf=${csrf}; Max-Age=43200; ${base}`, // readable by the SPA for the double-submit header
+        ];
+        await logAudit(deps.pool, { actor: user.email, action: "login.success", ip, targetType: "session", targetId: user.id });
+        res.writeHead(200, { "content-type": "application/json", "set-cookie": cookies });
         return void res.end(JSON.stringify({ ok: true, name: user.name }));
       }
       if (req.method === "POST" && url === "/logout") {
@@ -131,8 +173,27 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
         const op = await operatorFrom(req);
         if (!op) return json(res, 401, { ok: false, error: "operator login required" });
         const need = (cap: string) => op.capabilities.has(cap);
+        const ip = clientIp(req);
+
+        // CSRF: double-submit. Mutating requests must echo the readable uw_csrf cookie in a header.
+        if (req.method !== "GET" && req.method !== "HEAD") {
+          const cookieTok = parseCookies(req.headers.cookie).uw_csrf;
+          const headerTok = (req.headers["x-csrf-token"] as string | undefined) ?? "";
+          if (!cookieTok || headerTok !== cookieTok) {
+            await logAudit(deps.pool, { actor: op.email, action: "csrf.reject", outcome: "deny", ip, detail: { path: url } });
+            return json(res, 403, { ok: false, error: "missing or invalid CSRF token" });
+          }
+        }
 
         if (req.method === "GET") {
+          if (url === "/api/audit") {
+            if (!need("users.manage")) return json(res, 403, { ok: false, error: "missing capability users.manage" });
+            return json(res, 200, await listAudit(deps.pool, 200));
+          }
+          if (url === "/api/mcp-token") {
+            if (!need("users.manage")) return json(res, 403, { ok: false, error: "missing capability users.manage" });
+            return json(res, 200, { enabled: Boolean(authToken), token: authToken || null });
+          }
           if (url === "/api/overview") return json(res, 200, await reportSummary(deps.pool));
           if (url === "/api/providers") {
             const registry = await readRegistry();
@@ -178,6 +239,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
             const m = await loadManifestFile(join(pkgDir, "plugin.json"));
             if (!m.ok || !m.manifest) return json(res, 400, { ok: false, error: `invalid manifest: ${m.errors.join("; ")}` });
             await installProvider(deps.pool, m.manifest);
+            await logAudit(deps.pool, { actor: op.email, action: "provider.install", ip, targetType: "provider", targetId: id });
             return json(res, 200, { ok: true, id });
           }
           if (url === "/api/providers/register") {
@@ -192,6 +254,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
             if (!v.ok || !v.manifest) return json(res, 400, { ok: false, error: `invalid manifest:\n- ${v.errors.join("\n- ")}` });
             if (v.manifest.kind !== "declarative") return json(res, 400, { ok: false, error: "register accepts only declarative providers (code providers ship through the repo)" });
             await installProvider(deps.pool, v.manifest);
+            await logAudit(deps.pool, { actor: op.email, action: "provider.register", ip, targetType: "provider", targetId: v.manifest.id, detail: { kind: "declarative" } });
             return json(res, 200, { ok: true, id: v.manifest.id });
           }
           if (url === "/api/actions/ingest") {
@@ -207,6 +270,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
               confidenceThreshold: deps.config.reviewConfidenceThreshold,
               brightData: deps.config.brightData,
             });
+            await logAudit(deps.pool, { actor: op.email, action: "bill.ingest", ip, targetType: "account", targetId: accountId, detail: { source: body.url ? "fetch" : "upload", billId: outcome.billId } });
             return json(res, 200, { ok: true, outcome });
           }
           if (url === "/api/accounts") {
@@ -216,6 +280,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
             if (!providerId || !displayName) return json(res, 400, { ok: false, error: "providerId and displayName required" });
             try {
               const accId = await createAccount(deps.pool, { providerId, displayName, externalRef: body.ref ? String(body.ref) : undefined });
+              await logAudit(deps.pool, { actor: op.email, action: "account.create", ip, targetType: "account", targetId: accId, detail: { providerId } });
               return json(res, 200, { ok: true, id: accId });
             } catch (e) {
               return json(res, 400, { ok: false, error: (e as Error).message });
@@ -228,8 +293,11 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
             const password = String(body.password ?? "");
             const roleCode = String(body.roleCode ?? "operator");
             if (!name || !email || !password) return json(res, 400, { ok: false, error: "name, email, password required" });
+            const pwIssue = passwordIssue(password);
+            if (pwIssue) return json(res, 400, { ok: false, error: pwIssue });
             try {
               const uid = await createUser(deps.pool, { name, email, password, roleCode });
+              await logAudit(deps.pool, { actor: op.email, action: "user.create", ip, targetType: "user", targetId: uid, detail: { email, roleCode } });
               return json(res, 200, { ok: true, id: uid });
             } catch (e) {
               return json(res, 400, { ok: false, error: (e as Error).message });
@@ -240,6 +308,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
             const accountId = posInt(body.accountId);
             if (!accountId) return json(res, 400, { ok: false, error: "valid accountId required" });
             const outcome = await executeRun(deps.pool, { accountId, artifactsDir: deps.config.artifactsDir, confidenceThreshold: deps.config.reviewConfidenceThreshold, brightData: deps.config.brightData });
+            await logAudit(deps.pool, { actor: op.email, action: "bill.run", ip, targetType: "account", targetId: accountId, detail: { billId: outcome.billId, status: outcome.status } });
             return json(res, 200, { ok: true, outcome });
           }
           if (url === "/api/actions/review") {
@@ -248,6 +317,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
             const decision = body.decision === "reject" ? "reject" : "approve";
             if (!billId) return json(res, 400, { ok: false, error: "valid billId required" });
             const outcome = await reviewBill(deps.pool, billId, decision, { reviewer: op.email });
+            await logAudit(deps.pool, { actor: op.email, action: `bill.${decision}`, ip, targetType: "bill", targetId: billId });
             return json(res, 200, { ok: true, outcome });
           }
           if (url === "/api/actions/export") {
@@ -255,6 +325,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
             const billId = posInt(body.billId);
             if (!billId) return json(res, 400, { ok: false, error: "valid billId required" });
             const result = await exportBill(deps.pool, billId, deps.config.exportsDir);
+            await logAudit(deps.pool, { actor: op.email, action: "bill.export", ip, targetType: "bill", targetId: billId, detail: { path: result.path } });
             return json(res, 200, { ok: true, path: result.path });
           }
           return json(res, 404, { ok: false, error: "unknown resource" });

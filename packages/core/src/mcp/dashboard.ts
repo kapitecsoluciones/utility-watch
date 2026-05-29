@@ -50,8 +50,11 @@ const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'
 let ME = { authenticated:false, capabilities:[] };
 const can = (c) => ME.capabilities.indexOf(c) >= 0;
 
+function csrf(){ const m=document.cookie.match(/(?:^|;\s*)uw_csrf=([^;]+)/); return m?decodeURIComponent(m[1]):''; }
 async function api(path, method, body){
-  const r = await fetch(path,{method:method||'GET',headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+  const h={}; if(body) h['content-type']='application/json';
+  const mth=method||'GET'; if(mth!=='GET'&&mth!=='HEAD') h['x-csrf-token']=csrf();
+  const r = await fetch(path,{method:mth,headers:h,body:body?JSON.stringify(body):undefined});
   let j={}; try{ j=await r.json(); }catch(_){}
   if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
   return j;
@@ -73,7 +76,7 @@ function renderLogin(){
   document.getElementById('password').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('loginBtn').click(); });
 }
 
-const SECTIONS = [['overview','Overview'],['providers','Providers'],['accounts','Accounts'],['bills','Bills'],['history','History'],['users','Users'],['reports','Reports']];
+const SECTIONS = [['overview','Overview'],['providers','Providers'],['accounts','Accounts'],['bills','Bills'],['history','History'],['users','Users'],['audit','Audit'],['reports','Reports']];
 
 function renderApp(){
   const app=document.getElementById('app'); app.replaceChildren();
@@ -101,16 +104,29 @@ async function show(id){
     if(id==='bills'){ main.innerHTML = await viewBills(); bindActions(); return; }
     if(id==='history'){ main.innerHTML = await viewHistory(); return; }
     if(id==='users'){ main.innerHTML = await viewUsers(); bindUsers(); return; }
+    if(id==='audit'){ main.innerHTML = await viewAudit(); return; }
     if(id==='reports'){ main.innerHTML = await viewReports(); return; }
   }catch(e){ main.innerHTML = '<div class="text-red-600">'+esc(e.message)+'</div>'; }
 }
 
 async function viewOverview(){
   const o = await api('/api/overview'); const t=o.totals;
+  var tok=null; if(can('users.manage')){ try{ tok=await api('/api/mcp-token'); }catch(_){} }
   const card=(label,val)=>'<div class="card p-4"><div class="text-slate-500 text-xs uppercase tracking-wide">'+label+'</div><div class="text-2xl font-bold mt-1">'+val+'</div></div>';
+  var tokHtml='';
+  if(tok){ tokHtml = tok.enabled
+    ? '<div class="mt-3 text-sm"><span class="text-slate-500">Agent token (Authorization: Bearer):</span> <code>'+esc(tok.token)+'</code></div>'
+    : '<div class="mt-3 text-sm text-slate-500">Agent token: <b>not set</b> — the /mcp endpoint is open. Set <code>MCP_AUTH_TOKEN</code> to require a bearer token.</div>'; }
   return panel('Overview',
    '<div class="grid grid-cols-3 gap-3">'+card('Providers',t.providers)+card('Accounts',t.accounts)+card('Bills',t.bills)+card('Runs',t.runs)+card('Users',t.users)+card('Total due','USD '+Number(t.total_due).toFixed(2))+'</div>'+
-   '<div class="card p-5 mt-4"><div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Agent Interface (MCP)</div><div class="mono text-cyan-700 text-sm">'+esc(location.origin)+'/mcp</div><div class="text-slate-500 text-sm mt-2">Tools: list_providers · list_bills · run_retrieval · get_bill · diagnose_run · export_bill/propose_review (gated)</div></div>');
+   '<div class="card p-5 mt-4"><div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Agent Interface (MCP)</div><div class="mono text-cyan-700 text-sm">'+esc(location.origin)+'/mcp</div><div class="text-slate-500 text-sm mt-2">Tools: list_providers · list_bills · run_retrieval · get_bill · diagnose_run · export_bill/propose_review (gated)</div>'+tokHtml+'</div>');
+}
+
+async function viewAudit(){
+  const rows = await api('/api/audit');
+  const oPill=(o)=> o==='deny'||o==='fail' ? '<span class="pill st-rejected">'+esc(o)+'</span>' : '<span class="pill st-approved">'+esc(o)+'</span>';
+  const body = rows.map(function(r){ var tgt = r.target_type ? esc(r.target_type)+(r.target_id?(' #'+esc(r.target_id)):'') : '—'; return '<tr><td class="text-slate-500 mono text-xs">'+esc(r.ts)+'</td><td>'+esc(r.actor||'—')+'</td><td><code>'+esc(r.action)+'</code></td><td class="text-slate-500">'+tgt+'</td><td>'+oPill(r.outcome)+'</td><td class="text-slate-500 mono text-xs">'+esc(r.ip||'—')+'</td></tr>'; }).join('');
+  return panel('Audit log', '<p class="text-slate-500 text-sm mb-3">Most recent 200 actions (logins, installs, ingests, reviews, exports, denials).</p>'+tbl([{h:'Time'},{h:'Actor'},{h:'Action'},{h:'Target'},{h:'Outcome'},{h:'IP'}], body));
 }
 
 async function viewProviders(){
