@@ -29,14 +29,15 @@ function clientLanding(): string {
 </style></head>
 <body class="hero">
 <header class="max-w-5xl mx-auto px-6 py-5 flex items-center gap-3">
-  <div class="logo head font-bold text-white text-xl">${brand.slice(0, 1)}</div>
+  <img src="/logo.png" alt="${brand}" style="height:40px;width:40px;object-fit:cover;object-position:center 28%;border-radius:9px">
   <span class="head font-bold text-xl">${brand}</span>
   <span class="text-slate-400">·</span><span class="text-slate-500">Servicios</span>
   <div class="flex-1"></div>
   <a href="/console" class="text-sm font-semibold" style="color:#0e7490">Entrar →</a>
 </header>
 
-<main class="max-w-3xl mx-auto px-6 pt-16 pb-10 text-center">
+<main class="max-w-3xl mx-auto px-6 pt-12 pb-10 text-center">
+  <img src="/logo.png" alt="${brand}" style="height:150px;width:150px;object-fit:contain;margin:0 auto 18px;border-radius:18px">
   <h1 class="text-4xl md:text-5xl font-bold leading-tight">Tus servicios, al día y en un solo lugar</h1>
   <p class="text-slate-600 text-lg mt-5 max-w-2xl mx-auto">${tagline}</p>
   <div class="mt-8"><a href="/console" class="btn">Entrar al panel</a></div>

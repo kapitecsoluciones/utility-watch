@@ -121,10 +121,12 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
       }
       if (req.method === "GET" && path === "/logo.png") {
         try {
+          const src = process.env.BRAND_LOGO || join(coreRoot, "assets", "logo.png");
           const buf = process.env.BRAND_LOGO
-            ? await readFile(process.env.BRAND_LOGO).catch(() => readFile(join(coreRoot, "assets", "logo.png")))
-            : await readFile(join(coreRoot, "assets", "logo.png"));
-          res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
+            ? await readFile(src).catch(() => readFile(join(coreRoot, "assets", "logo.png")))
+            : await readFile(src);
+          const ct = /\.jpe?g$/i.test(src) ? "image/jpeg" : /\.svg$/i.test(src) ? "image/svg+xml" : "image/png";
+          res.writeHead(200, { "content-type": ct, "cache-control": "public, max-age=3600" });
           return void res.end(buf);
         } catch {
           return json(res, 404, { error: "not found" });
