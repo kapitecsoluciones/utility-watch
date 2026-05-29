@@ -205,7 +205,7 @@ function bindUsers(){
   if(add) add.onclick=async()=>{ try{ await api('/api/users','POST',{name:document.getElementById('u-name').value,email:document.getElementById('u-email').value,password:document.getElementById('u-pass').value,roleCode:document.getElementById('u-role').value}); show('users'); }catch(e){ alert(e.message); } };
 }
 
-function oblPill(s){ var c=({overdue:'#b91c1c',due:'#b45309',paid:'#047857',arrangement:'#0e7490',cancelled:'#64748b',unknown:'#94a3b8'})[s]||'#64748b'; return '<span class="pill" style="color:'+c+';border-color:'+c+'55">'+esc(s)+'</span>'; }
+function oblPill(s){ var c=({overdue:'#b91c1c',due_soon:'#ea580c',due:'#b45309',paid:'#047857',arrangement:'#0e7490',cancelled:'#64748b',unknown:'#94a3b8'})[s]||'#64748b'; return '<span class="pill" style="color:'+c+';border-color:'+c+'55">'+esc(s)+'</span>'; }
 function oblBadges(o){ var b=''; if(+o.is_autopay) b+=' <span class="pill" title="On autopay — do not pay manually" style="color:#0e7490;border-color:#0891b255">🔁 auto</span>'; if(+o.paid_by_tenant) b+=' <span class="pill" title="Paid by tenant" style="color:#475569;border-color:#94a3b855">👤 tenant</span>'; if(+o.is_payment_arrangement) b+=' <span class="pill" title="Payment arrangement" style="color:#b45309;border-color:#b4530955">plan</span>'; return b; }
 
 async function viewTrends(){
