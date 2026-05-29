@@ -1,0 +1,17 @@
+{
+  "providerId": "cvwd-us",
+  "accountRef": "7-204-9981-03",
+  "statementDate": "2026-05-05",
+  "periodStart": "2026-04-01",
+  "periodEnd": "2026-04-30",
+  "dueDate": "2026-05-27",
+  "amountDue": 128.64,
+  "currency": "USD",
+  "confidence": 0.9,
+  "lineItems": [
+    { "label": "Water consumption charge", "amount": 74.2 },
+    { "label": "Sewer service charge", "amount": 38.5 },
+    { "label": "Fixed system charge", "amount": 12.0 },
+    { "label": "Taxes and surcharges", "amount": 3.94 }
+  ]
+}
