@@ -27,6 +27,8 @@ export interface AppConfig {
   logLevel: string;
   reviewConfidenceThreshold: number;
   brightData: BrightDataConfig;
+  /** Raw SECRETS_KEY (32-byte hex/base64) for the encrypted secret store; "" disables it. */
+  secretsKey: string;
 }
 
 export class ConfigError extends Error {
@@ -104,6 +106,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
     logLevel: env.LOG_LEVEL ?? "info",
     reviewConfidenceThreshold: threshold,
     brightData,
+    secretsKey: env.SECRETS_KEY ?? "",
   };
 }
 
@@ -113,5 +116,6 @@ export function redactedConfig(c: AppConfig): AppConfig {
     ...c,
     db: { ...c.db, password: c.db.password ? "***" : "" },
     brightData: { ...c.brightData, apiKey: c.brightData.apiKey ? "***" : "" },
+    secretsKey: c.secretsKey ? "***" : "",
   };
 }

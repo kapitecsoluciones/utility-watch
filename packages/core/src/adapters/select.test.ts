@@ -13,6 +13,7 @@ const baseConfig = (over: Partial<AppConfig["brightData"]> = {}): AppConfig => (
   logLevel: "info",
   reviewConfidenceThreshold: 0.85,
   brightData: { enabled: false, apiKey: "", browserUrl: "", zone: "mcp_unlocker", country: "us", ...over },
+  secretsKey: "",
 });
 
 const manifest = (brightData: ProviderManifest["permissions"]["brightData"]): ProviderManifest =>

@@ -6,6 +6,7 @@ import { loadProvider } from "../plugins/loader.ts";
 import { loadManifestFile } from "../plugins/validate.ts";
 import { selectAdapter } from "../adapters/select.ts";
 import { openBrightDataBrowser, fetchViaBrightData } from "../adapters/brightdata.ts";
+import { getSecret as getStoredSecret, parseSecretsKey } from "../services/secrets.ts";
 import { getAccount } from "../services/accounts.ts";
 import { getRegistryProvider, getProviderManifest } from "../services/providers.ts";
 import { parseDeclarative } from "../plugins/declarative.ts";
@@ -19,6 +20,8 @@ export interface RunOptions {
   artifactsDir: string;
   confidenceThreshold: number;
   brightData?: BrightDataConfig;
+  /** Raw SECRETS_KEY for decrypting the provider's secretRefs from the store. */
+  secretsKey?: string;
 }
 
 export interface RunOutcome {
@@ -36,6 +39,18 @@ export interface RunOutcome {
  * record an audit trail. Errors map to the shared taxonomy and never throw out
  * of the function once a run row exists. The MCP `run_retrieval` tool calls this.
  */
+/** Decrypt a provider's declared secretRefs from the store into a name→value map. */
+async function loadSecretRefs(pool: Pool, secretsKey: string | undefined, refs: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const key = parseSecretsKey(secretsKey);
+  if (!key || !refs.length) return map;
+  for (const name of refs) {
+    const v = await getStoredSecret(pool, key, name);
+    if (v != null) map.set(name, v);
+  }
+  return map;
+}
+
 export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutcome> {
   const account = await getAccount(pool, opts.accountId);
   if (!account) throw new Error(`account ${opts.accountId} not found`);
@@ -82,6 +97,10 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
     const provider = await loadProvider(pluginDir);
     await log("info", "run.started", `provider ${provider.manifest.id}@${provider.manifest.version}`);
 
+    // Pre-load the provider's declared secretRefs from the encrypted store so
+    // getSecret() stays synchronous. Falls back to SECRET_* env vars.
+    const secretMap = await loadSecretRefs(pool, opts.secretsKey, provider.manifest.auth?.secretRefs ?? []);
+
     const ctx: ProviderContext = {
       logger: {
         info: (m, meta) => void log("info", "provider", m, meta).catch(() => {}),
@@ -89,7 +108,7 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
         error: (m, meta) => void log("error", "provider", m, meta).catch(() => {}),
       },
       account: { ref: account.external_account_ref ?? account.display_name, displayName: account.display_name },
-      getSecret: (name) => process.env[`SECRET_${name.toUpperCase()}`],
+      getSecret: (name) => secretMap.get(name) ?? process.env[`SECRET_${name.toUpperCase()}`],
       ...(selection.adapter === "brightdata-scraping-browser"
         ? { openBrowser: () => openBrightDataBrowser(brightData.browserUrl) }
         : {}),

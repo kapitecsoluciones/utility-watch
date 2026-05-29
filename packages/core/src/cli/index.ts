@@ -11,6 +11,7 @@ import { createAccount, listAccounts } from "../services/accounts.ts";
 import { listBills, getBill } from "../services/bills.ts";
 import { reviewBill } from "../services/review.ts";
 import { exportBill } from "../services/exporter.ts";
+import { setSecret, listSecretNames, deleteSecret, parseSecretsKey, generateSecretsKey } from "../services/secrets.ts";
 import { executeRun } from "../runner/index.ts";
 import { getRunDetail } from "../services/runs.ts";
 import { buildMcpServer, DEFAULT_AGENT_CAPABILITIES } from "../mcp/server.ts";
@@ -234,6 +235,74 @@ async function cmdAccountsCreate(flags: Record<string, string | boolean>): Promi
   }
 }
 
+function secretsKeyOrExit(config: AppConfig): Buffer {
+  const key = parseSecretsKey(config.secretsKey);
+  if (!key) {
+    process.stderr.write("SECRETS_KEY is not set or invalid (need 32 bytes, hex or base64). Generate one: utility-watch secrets:keygen\n");
+    process.exit(1);
+  }
+  return key;
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const c of process.stdin) chunks.push(c as Buffer);
+  return Buffer.concat(chunks).toString("utf8").replace(/\r?\n$/, "");
+}
+
+async function cmdSecretsSet(rest: string[], flags: Record<string, string | boolean>): Promise<number> {
+  const name = rest.find((a) => !a.startsWith("-"));
+  if (!name) {
+    process.stderr.write("usage: utility-watch secrets:set <name> [--value <v>]  (omit --value to read from stdin)\n");
+    return 1;
+  }
+  const value = typeof flags.value === "string" ? flags.value : await readStdin();
+  if (!value) {
+    process.stderr.write("empty value; provide --value or pipe it on stdin\n");
+    return 1;
+  }
+  const config = loadConfigOrExit();
+  const key = secretsKeyOrExit(config);
+  const pool = createPool(config.db);
+  try {
+    await setSecret(pool, key, name, value);
+    process.stdout.write(`secret '${name}' stored (encrypted).\n`);
+    return 0;
+  } finally {
+    await pool.end();
+  }
+}
+
+async function cmdSecretsList(): Promise<number> {
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    const names = await listSecretNames(pool);
+    if (!names.length) process.stdout.write("No secrets stored.\n");
+    for (const s of names) process.stdout.write(`  ${s.name}\n`);
+    return 0;
+  } finally {
+    await pool.end();
+  }
+}
+
+async function cmdSecretsRm(rest: string[]): Promise<number> {
+  const name = rest.find((a) => !a.startsWith("-"));
+  if (!name) {
+    process.stderr.write("usage: utility-watch secrets:rm <name>\n");
+    return 1;
+  }
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    await deleteSecret(pool, name);
+    process.stdout.write(`secret '${name}' removed.\n`);
+    return 0;
+  } finally {
+    await pool.end();
+  }
+}
+
 async function cmdAccountsList(): Promise<number> {
   const config = loadConfigOrExit();
   const pool = createPool(config.db);
@@ -263,6 +332,7 @@ async function cmdRun(flags: Record<string, string | boolean>): Promise<number> 
       artifactsDir: config.artifactsDir,
       confidenceThreshold: config.reviewConfidenceThreshold,
       brightData: config.brightData,
+      secretsKey: config.secretsKey,
     });
     process.stdout.write(`${JSON.stringify(outcome, null, 2)}\n`);
     return outcome.status === "failed" ? 1 : 0;
@@ -425,6 +495,7 @@ async function cmdDemoSeed(): Promise<number> {
           artifactsDir: config.artifactsDir,
           confidenceThreshold: config.reviewConfidenceThreshold,
           brightData: config.brightData,
+      secretsKey: config.secretsKey,
         });
       }
     }
@@ -538,6 +609,15 @@ async function main(): Promise<number> {
       return cmdSetupCheck();
     case "setup":
       return cmdSetup();
+    case "secrets:set":
+      return cmdSecretsSet(rest, flags);
+    case "secrets:ls":
+      return cmdSecretsList();
+    case "secrets:rm":
+      return cmdSecretsRm(rest);
+    case "secrets:keygen":
+      process.stdout.write(generateSecretsKey() + "\n");
+      return 0;
     case undefined:
     case "help":
     case "--help":
