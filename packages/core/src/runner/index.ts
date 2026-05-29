@@ -7,6 +7,7 @@ import { loadProvider } from "../plugins/loader.ts";
 import { loadManifestFile } from "../plugins/validate.ts";
 import { selectAdapter } from "../adapters/select.ts";
 import { openBrightDataBrowser, fetchViaBrightData } from "../adapters/brightdata.ts";
+import { openLocalBrowser } from "../adapters/local-browser.ts";
 import { getSecret as getStoredSecret, parseSecretsKey } from "../services/secrets.ts";
 import { getAccount } from "../services/accounts.ts";
 import { getRegistryProvider, getProviderManifest } from "../services/providers.ts";
@@ -128,9 +129,10 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
       },
       account: { ref: account.external_account_ref ?? account.display_name, displayName: account.display_name },
       getSecret: (name) => secretMap.get(name) ?? process.env[`SECRET_${name.toUpperCase()}`],
-      ...(selection.adapter === "brightdata-scraping-browser"
-        ? { openBrowser: () => openBrightDataBrowser(brightData.browserUrl) }
-        : {}),
+      openBrowser:
+        selection.adapter === "brightdata-scraping-browser"
+          ? () => openBrightDataBrowser(brightData.browserUrl)
+          : () => openLocalBrowser(),
     };
 
     if (provider.healthcheck) {
