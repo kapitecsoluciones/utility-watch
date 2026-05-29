@@ -399,6 +399,17 @@ async function cmdDemoSeed(): Promise<number> {
   ];
   try {
     await runMigrations(pool, migrationsDir);
+    // Optional demo operator (creds from env, never committed). Lets the live
+    // dashboard demo human actions without baking a password into the repo.
+    const demoEmail = process.env.DEMO_OPERATOR_EMAIL;
+    const demoPass = process.env.DEMO_OPERATOR_PASSWORD;
+    if (demoEmail && demoPass) {
+      try {
+        await createFirstAdmin(pool, { name: "Demo Operator", email: demoEmail, password: demoPass });
+      } catch {
+        /* an admin already exists */
+      }
+    }
     for (const seed of seeds) {
       const res = await loadManifestFile(join(repoRoot, "plugins", seed.id, "plugin.json"));
       if (res.ok && res.manifest) await installProvider(pool, res.manifest);
