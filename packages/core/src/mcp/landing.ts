@@ -21,11 +21,11 @@ function clientLanding(): string {
 <style>
   body{background:#f8fafc;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0}
   h1,h2,.head{font-family:'Space Grotesk',Inter,sans-serif;letter-spacing:-.02em}
-  .hero{background:radial-gradient(1100px 520px at 50% -10%, #ecfeff 0, #f8fafc 60%)}
+  .hero{background:radial-gradient(1100px 520px at 50% -10%, #eef3f8 0, #f8fafc 60%)}
   .card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05)}
-  .btn{background:#0891b2;color:#fff;font-weight:700;padding:12px 26px;border-radius:10px;text-decoration:none;display:inline-block}
-  .btn:hover{background:#0e7490}
-  .logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#0891b2,#0e7490);display:flex;align-items:center;justify-content:center}
+  .btn{background:#1b4060;color:#fff;font-weight:700;padding:12px 26px;border-radius:10px;text-decoration:none;display:inline-block}
+  .btn:hover{background:#16344f}
+  .logobox{display:inline-flex;padding:18px;background:#fff;border:1px solid #e7e3da;border-radius:20px;box-shadow:0 4px 20px rgba(27,64,96,.08)}
 </style></head>
 <body class="hero">
 <header class="max-w-5xl mx-auto px-6 py-5 flex items-center gap-3">
@@ -33,11 +33,11 @@ function clientLanding(): string {
   <span class="head font-bold text-xl">${brand}</span>
   <span class="text-slate-400">·</span><span class="text-slate-500">Servicios</span>
   <div class="flex-1"></div>
-  <a href="/console" class="text-sm font-semibold" style="color:#0e7490">Entrar →</a>
+  <a href="/console" class="text-sm font-semibold" style="color:#16344f">Entrar →</a>
 </header>
 
 <main class="max-w-3xl mx-auto px-6 pt-12 pb-10 text-center">
-  <img src="/logo.png" alt="${brand}" style="height:150px;width:150px;object-fit:contain;margin:0 auto 18px;border-radius:18px">
+  <div class="logobox" style="margin:0 auto 22px"><img src="/logo.png" alt="${brand}" style="height:128px;width:128px;object-fit:contain"></div>
   <h1 class="text-4xl md:text-5xl font-bold leading-tight">Tus servicios, al día y en un solo lugar</h1>
   <p class="text-slate-600 text-lg mt-5 max-w-2xl mx-auto">${tagline}</p>
   <div class="mt-8"><a href="/console" class="btn">Entrar al panel</a></div>

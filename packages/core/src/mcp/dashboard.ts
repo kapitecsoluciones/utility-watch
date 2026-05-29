@@ -14,10 +14,9 @@ export async function renderDashboard(_pool: Pool, _viewer: DashboardViewer | nu
   const brand = process.env.BRAND_NAME || "Utility Watch";
   const client = (process.env.BRAND_MODE ?? "").toLowerCase() === "client";
   const subtitle = client ? "servicios" : "operator console";
-  return SHELL
-    .replace(/Utility Watch/g, brand.replace(/[<>]/g, ""))
-    .replace(/operator console/g, subtitle)
-    .replace("<body>", `<body><script>window.__CLIENT=${client};</script>`);
+  let shell = SHELL.replace(/Utility Watch/g, brand.replace(/[<>]/g, "")).replace(/operator console/g, subtitle);
+  if (client) shell = shell.replace(/#0891b2/g, "#1b4060").replace(/#0e7490/g, "#16344f").replace(/#ecfeff/g, "#eef3f8");
+  return shell.replace("<body>", `<body><script>window.__CLIENT=${client};</script>`);
 }
 
 const SHELL = `<!doctype html>
@@ -91,7 +90,8 @@ function renderApp(){
   document.getElementById('who').textContent = ME.name||'operator';
   const nav = document.getElementById('nav');
   const CLIENT_SECS=['overview','properties','obligations','alerts','calendar','trends'];
-  const NAV = window.__CLIENT ? SECTIONS.filter(s=>CLIENT_SECS.indexOf(s[0])>=0) : SECTIONS;
+  // client tabs always; internal tabs only for admins (or on the platform instance)
+  const NAV = SECTIONS.filter(s=> !window.__CLIENT || CLIENT_SECS.indexOf(s[0])>=0 || can('users.manage'));
   NAV.forEach(s=>{ const b=mk('<button class="nav" data-sec="'+s[0]+'">'+s[1]+'</button>'); b.onclick=()=>show(s[0]); nav.appendChild(b); });
   document.getElementById('logoutBtn').onclick = async ()=>{ await fetch('/logout',{method:'POST'}); boot(); };
 }
@@ -139,9 +139,9 @@ async function viewOverview(){
   if(tok){ tokHtml = tok.enabled
     ? '<div class="mt-3 text-sm"><span class="text-slate-500">Agent token (Authorization: Bearer):</span> <code>'+esc(tok.token)+'</code></div>'
     : '<div class="mt-3 text-sm text-slate-500">Agent token: <b>not set</b> — the /mcp endpoint is open. Set <code>MCP_AUTH_TOKEN</code> to require a bearer token.</div>'; }
-  const mcpCard = window.__CLIENT ? '' :
+  const mcpCard = (window.__CLIENT && !can('users.manage')) ? '' :
    '<div class="card p-5 mt-4"><div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Agent Interface (MCP)</div><div class="mono text-cyan-700 text-sm">'+esc(location.origin)+'/mcp</div><div class="text-slate-500 text-sm mt-2">Tools: list_providers · list_bills · run_retrieval · get_bill · diagnose_run · export_bill/propose_review (gated)</div>'+tokHtml+'</div>';
-  const sysHtml = window.__CLIENT ? '' :
+  const sysHtml = (window.__CLIENT && !can('users.manage')) ? '' :
    '<div class="text-xs uppercase tracking-widest text-slate-500 mb-2">System</div><div class="grid grid-cols-3 gap-3">'+card('Providers',t.providers)+card('Accounts',t.accounts)+card('Bills',t.bills)+card('Runs',t.runs)+card('Users',t.users)+card('Total due','USD '+Number(t.total_due).toFixed(2))+'</div>';
   return panel('Overview', kpiHtml+sysHtml+mcpCard);
 }
