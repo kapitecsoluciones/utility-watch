@@ -49,6 +49,29 @@
       "maintainer": "Utility Watch Maintainers"
     },
     {
+      "id": "cvwd-us",
+      "name": "Coachella Valley Water District",
+      "country": "US",
+      "serviceTypes": ["water"],
+      "status": "draft",
+      "verification": "fixture-only",
+      "package": "plugins/cvwd-us",
+      "pluginVersion": "0.1.0",
+      "coreVersion": ">=0.1.0 <1.0.0",
+      "brightData": "supported",
+      "capabilities": [
+        "auth.login",
+        "bills.list",
+        "bills.download",
+        "bills.normalize"
+      ],
+      "knownLimitations": [
+        "Public repo ships the parser with a synthetic fixture only",
+        "Live retrieval needs the Bright Data Scraping Browser to drive the public CVWD page"
+      ],
+      "maintainer": "Utility Watch Maintainers"
+    },
+    {
       "id": "socalgas-us",
       "name": "SoCalGas",
       "country": "US",
