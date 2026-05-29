@@ -47,7 +47,13 @@ export function parseCookies(header: string | undefined): Record<string, string>
   for (const part of header.split(";")) {
     const eq = part.indexOf("=");
     if (eq < 0) continue;
-    out[part.slice(0, eq).trim()] = decodeURIComponent(part.slice(eq + 1).trim());
+    const key = part.slice(0, eq).trim();
+    const raw = part.slice(eq + 1).trim();
+    try {
+      out[key] = decodeURIComponent(raw);
+    } catch {
+      out[key] = raw; // malformed percent-encoding — keep raw, don't crash
+    }
   }
   return out;
 }
