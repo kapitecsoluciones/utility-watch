@@ -49,6 +49,30 @@
       "maintainer": "Utility Watch Maintainers"
     },
     {
+      "id": "socalgas-us",
+      "name": "SoCalGas",
+      "country": "US",
+      "serviceTypes": ["gas"],
+      "status": "draft",
+      "verification": "fixture-only",
+      "package": "plugins/socalgas-us",
+      "pluginVersion": "0.1.0",
+      "coreVersion": ">=0.1.0 <1.0.0",
+      "brightData": "supported",
+      "capabilities": [
+        "auth.login",
+        "accounts.list",
+        "bills.list",
+        "bills.download",
+        "bills.normalize"
+      ],
+      "knownLimitations": [
+        "Public repo ships the parser with a synthetic JSON fixture only",
+        "Live retrieval intercepts the billing API via the Bright Data Scraping Browser"
+      ],
+      "maintainer": "Utility Watch Maintainers"
+    },
+    {
       "id": "example-provider",
       "name": "Example Utility Provider",
       "country": "US",
