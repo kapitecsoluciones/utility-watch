@@ -16,7 +16,7 @@ import { getRunDetail } from "../services/runs.ts";
 import { buildMcpServer, DEFAULT_AGENT_CAPABILITIES } from "../mcp/server.ts";
 import { startHttpServer } from "../mcp/http.ts";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { migrationsDir } from "../paths.ts";
+import { migrationsDir, repoRoot } from "../paths.ts";
 import { join } from "node:path";
 import type { AppConfig } from "../config/index.ts";
 
@@ -388,6 +388,37 @@ async function cmdBillsExport(args: string[]): Promise<number> {
   }
 }
 
+async function cmdDemoSeed(): Promise<number> {
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db, { multipleStatements: true });
+  try {
+    await runMigrations(pool, migrationsDir);
+    const res = await loadManifestFile(join(repoRoot, "plugins", "mock-provider", "plugin.json"));
+    if (res.ok && res.manifest) await installProvider(pool, res.manifest);
+    const accounts = await listAccounts(pool);
+    let accountId = accounts.find((a) => a.provider_id === "mock-provider")?.id;
+    if (!accountId) {
+      accountId = await createAccount(pool, {
+        providerId: "mock-provider",
+        displayName: "Demo Account (synthetic)",
+        externalRef: "DEMO-0001",
+      });
+    }
+    const existing = await listBills(pool, { accountId });
+    if (!existing.length) {
+      await executeRun(pool, {
+        accountId,
+        artifactsDir: config.artifactsDir,
+        confidenceThreshold: config.reviewConfidenceThreshold,
+      });
+    }
+    process.stdout.write(`Demo seeded: mock-provider installed, account ${accountId}, ${existing.length ? "bill exists" : "bill created"}.\n`);
+    return 0;
+  } finally {
+    await pool.end();
+  }
+}
+
 function agentCapabilities(): Set<string> {
   const env = process.env.AGENT_CAPABILITIES;
   const caps = env ? env.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_AGENT_CAPABILITIES;
@@ -439,6 +470,7 @@ function help(): number {
       "  bills:export          Export an approved bill as JSON (<bill-id>)",
       "  mcp                   Start the MCP server over Streamable HTTP (agent face)",
       "  mcp:stdio             Start the MCP server over stdio (local agent)",
+      "  demo:seed             Install the mock provider, a demo account, and one bill",
       "",
     ].join("\n"),
   );
@@ -484,6 +516,8 @@ async function main(): Promise<number> {
       return cmdMcpHttp();
     case "mcp:stdio":
       return cmdMcpStdio();
+    case "demo:seed":
+      return cmdDemoSeed();
     case "setup:check":
       return cmdSetupCheck();
     case "setup":
