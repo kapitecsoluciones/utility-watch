@@ -141,10 +141,9 @@ async function viewOverview(){
     : '<div class="mt-3 text-sm text-slate-500">Agent token: <b>not set</b> — the /mcp endpoint is open. Set <code>MCP_AUTH_TOKEN</code> to require a bearer token.</div>'; }
   const mcpCard = window.__CLIENT ? '' :
    '<div class="card p-5 mt-4"><div class="text-xs uppercase tracking-widest text-slate-500 mb-2">Agent Interface (MCP)</div><div class="mono text-cyan-700 text-sm">'+esc(location.origin)+'/mcp</div><div class="text-slate-500 text-sm mt-2">Tools: list_providers · list_bills · run_retrieval · get_bill · diagnose_run · export_bill/propose_review (gated)</div>'+tokHtml+'</div>';
-  return panel('Overview',
-   kpiHtml+
-   '<div class="text-xs uppercase tracking-widest text-slate-500 mb-2">System</div><div class="grid grid-cols-3 gap-3">'+card('Providers',t.providers)+card('Accounts',t.accounts)+card('Bills',t.bills)+card('Runs',t.runs)+card('Users',t.users)+card('Total due','USD '+Number(t.total_due).toFixed(2))+'</div>'+
-   mcpCard);
+  const sysHtml = window.__CLIENT ? '' :
+   '<div class="text-xs uppercase tracking-widest text-slate-500 mb-2">System</div><div class="grid grid-cols-3 gap-3">'+card('Providers',t.providers)+card('Accounts',t.accounts)+card('Bills',t.bills)+card('Runs',t.runs)+card('Users',t.users)+card('Total due','USD '+Number(t.total_due).toFixed(2))+'</div>';
+  return panel('Overview', kpiHtml+sysHtml+mcpCard);
 }
 
 async function viewAudit(){
