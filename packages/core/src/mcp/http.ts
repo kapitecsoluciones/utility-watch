@@ -93,7 +93,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         return void res.end(await renderDashboard(deps.pool, operator));
       }
-      if (req.method === "GET" && url === "/logo.png") {
+      if (req.method === "GET" && (url === "/logo.png" || url.startsWith("/logo.png?"))) {
         try {
           const buf = await readFile(join(coreRoot, "assets", "logo.png"));
           res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
