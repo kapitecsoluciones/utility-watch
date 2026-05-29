@@ -76,7 +76,7 @@ function renderLogin(){
   document.getElementById('password').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('loginBtn').click(); });
 }
 
-const SECTIONS = [['overview','Overview'],['properties','Properties'],['obligations','Accounts & balances'],['providers','Providers'],['accounts','Logins'],['bills','Bills'],['history','History'],['users','Users'],['audit','Audit'],['reports','Reports']];
+const SECTIONS = [['overview','Overview'],['properties','Properties'],['obligations','Accounts & balances'],['alerts','Alerts'],['providers','Providers'],['accounts','Logins'],['bills','Bills'],['history','History'],['users','Users'],['audit','Audit'],['reports','Reports']];
 
 function renderApp(){
   const app=document.getElementById('app'); app.replaceChildren();
@@ -106,6 +106,7 @@ async function show(id){
     if(id==='users'){ main.innerHTML = await viewUsers(); bindUsers(); return; }
     if(id==='properties'){ main.innerHTML = await viewProperties(); bindProperties(); return; }
     if(id==='obligations'){ main.innerHTML = await viewObligations(); bindObligations(); return; }
+    if(id==='alerts'){ main.innerHTML = await viewAlerts(); bindObligations(); return; }
     if(id==='audit'){ main.innerHTML = await viewAudit(); return; }
     if(id==='reports'){ main.innerHTML = await viewReports(); return; }
   }catch(e){ main.innerHTML = '<div class="text-red-600">'+esc(e.message)+'</div>'; }
@@ -194,6 +195,15 @@ function bindUsers(){
 
 function oblPill(s){ var c=({overdue:'#b91c1c',due:'#b45309',paid:'#047857',arrangement:'#0e7490',cancelled:'#64748b',unknown:'#94a3b8'})[s]||'#64748b'; return '<span class="pill" style="color:'+c+';border-color:'+c+'55">'+esc(s)+'</span>'; }
 
+async function viewAlerts(){
+  const obs = await api('/api/obligations?status=overdue');
+  const total = obs.reduce((s,o)=>s+Number(o.current_balance||0),0);
+  const rows = obs.map(o=>'<tr class="cursor-pointer hover:bg-slate-50" data-obl="'+o.id+'"><td><code>'+esc(o.provider_id)+'</code></td><td>'+esc(o.account_ref)+'</td><td class="text-slate-500">'+esc(o.property_name||'—')+'</td><td class="text-right font-semibold">USD '+Number(o.current_balance||0).toFixed(2)+'</td><td class="text-slate-500">'+esc(o.current_due_date||'—')+'</td></tr>').join('');
+  return panel('Alerts — overdue',
+    '<div class="card p-5 mb-4" style="border-color:#fecaca;background:#fef2f2"><div class="text-xs uppercase tracking-widest" style="color:#b91c1c">Overdue total</div><div class="text-3xl font-bold mt-1" style="color:#b91c1c">USD '+total.toFixed(2)+'</div><div class="text-slate-500 text-sm mt-1">'+obs.length+' account(s) past due</div></div>'+
+    tbl([{h:'Provider'},{h:'Account'},{h:'Property'},{h:'Owed',r:1},{h:'Due'}], rows));
+}
+
 async function viewProperties(){
   const ps = await api('/api/properties');
   const grand = ps.reduce((s,p)=>s+Number(p.total_balance||0),0);
@@ -217,7 +227,7 @@ async function viewObligations(){
   const rows = obs.map(o=>'<tr class="cursor-pointer hover:bg-slate-50" data-obl="'+o.id+'"><td><code>'+esc(o.provider_id)+'</code></td><td>'+esc(o.account_ref)+'</td><td class="text-slate-500">'+esc(o.property_name||'—')+'</td><td class="text-right font-semibold">'+(o.current_balance==null?'—':'USD '+Number(o.current_balance).toFixed(2))+'</td><td class="text-slate-500">'+esc(o.current_due_date||'—')+'</td><td>'+oblPill(o.status)+'</td></tr>').join('');
   const hdr = filt?'<div class="mb-3 text-sm"><button class="btn-ghost" id="obl-clear">← All properties</button> <b>'+esc(filt.name)+'</b></div>':'';
   return panel('Accounts & balances',
-    hdr+'<div class="card p-4 mb-4 flex gap-4 items-end"><div><div class="text-xs text-slate-500 uppercase">Owed'+(filt?' (this property)':'')+'</div><div class="text-2xl font-bold">USD '+grand.toFixed(2)+'</div></div><div class="flex-1"></div><div><div class="text-xs text-slate-500 mb-1">Search</div><input id="obl-search" class="field" placeholder="provider / account / property" value="'+esc(window.__oblSearch||'')+'"></div></div>'+
+    hdr+'<div class="card p-4 mb-4 flex gap-4 items-end"><div><div class="text-xs text-slate-500 uppercase">Owed'+(filt?' (this property)':'')+'</div><div class="text-2xl font-bold">USD '+grand.toFixed(2)+'</div></div><div class="flex-1"></div><a class="btn-ghost" href="/api/export.csv">Export CSV</a><div><div class="text-xs text-slate-500 mb-1">Search</div><input id="obl-search" class="field" placeholder="provider / account / property" value="'+esc(window.__oblSearch||'')+'"></div></div>'+
     tbl([{h:'Provider'},{h:'Account'},{h:'Property'},{h:'Owed',r:1},{h:'Due'},{h:'Status'}], rows));
 }
 function bindObligations(){

@@ -197,6 +197,16 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
             if (!need("users.manage")) return json(res, 403, { ok: false, error: "missing capability users.manage" });
             return json(res, 200, { enabled: Boolean(authToken), token: authToken || null });
           }
+          if (path === "/api/export.csv") {
+            const today = new Date().toISOString().slice(0, 10);
+            const obs = await listObligations(deps.pool, {}, today);
+            const esc = (v: unknown) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+            const header = ["provider", "account_ref", "property", "category", "current_balance", "currency", "due_date", "status", "account_type", "payment_method"];
+            const lines = [header.join(",")];
+            for (const o of obs) lines.push([o.provider_id, o.account_ref, o.property_name, o.category_name, o.current_balance, o.currency, o.current_due_date, o.status, o.account_type, o.payment_method].map(esc).join(","));
+            res.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="utility-watch-${today}.csv"` });
+            return void res.end(lines.join("\n"));
+          }
           if (path === "/api/properties") return json(res, 200, await listProperties(deps.pool));
           if (path === "/api/obligations") {
             const q = new URL(url, "http://x").searchParams;
