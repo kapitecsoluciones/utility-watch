@@ -10,10 +10,10 @@ const LANDING = `<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Utility Watch — agent-native utility bill retrieval</title>
 <meta name="description" content="Open-source, agent-native platform that retrieves, normalizes, reviews, and exports utility bills from fragmented provider portals. Built for AI agents and humans, governed and audited.">
-<link rel="icon" href="/logo.png">
+<link rel="icon" href="/logo.png?v=2">
 <meta property="og:title" content="Utility Watch — agent-native utility bill retrieval">
 <meta property="og:description" content="Turn utility costs locked behind fragmented portals into evidence-backed, exportable financial records — for AI agents and humans.">
-<meta property="og:image" content="/logo.png">
+<meta property="og:image" content="/logo.png?v=2">
 <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -35,7 +35,7 @@ const LANDING = `<!doctype html>
 <div class="hero">
   <nav class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
     <div class="flex items-center gap-3">
-      <img src="/logo.png" width="34" height="34" class="rounded-lg" alt="Utility Watch">
+      <img src="/logo.png?v=2" width="34" height="34" class="rounded-lg" alt="Utility Watch">
       <span class="head font-bold text-lg">Utility Watch</span>
     </div>
     <div class="flex items-center gap-3 text-sm">
@@ -59,7 +59,7 @@ const LANDING = `<!doctype html>
       <div class="mono text-sm text-cyan-700 mt-6">MCP · https://utilitywatch.kapitec.pro/mcp</div>
     </div>
     <div class="flex justify-center">
-      <img src="/logo.png" width="260" height="260" class="rounded-3xl glow" alt="Utility Watch logo">
+      <img src="/logo.png?v=2" width="260" height="260" class="rounded-3xl glow" alt="Utility Watch logo">
     </div>
   </header>
 </div>
@@ -113,7 +113,7 @@ const LANDING = `<!doctype html>
 
 <footer class="border-t border-slate-200 mt-6">
   <div class="max-w-6xl mx-auto px-6 py-8 flex items-center justify-between text-slate-500 text-sm">
-    <div class="flex items-center gap-2"><img src="/logo.png" width="22" height="22" class="rounded" alt=""> Utility Watch</div>
+    <div class="flex items-center gap-2"><img src="/logo.png?v=2" width="22" height="22" class="rounded" alt=""> Utility Watch</div>
     <div><a href="${GH}">GitHub</a> · <a href="/console">Console</a> · <span class="mono">/mcp</span></div>
   </div>
 </footer>
