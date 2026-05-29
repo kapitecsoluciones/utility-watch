@@ -6,7 +6,15 @@ import { buildMcpServer, type McpDeps } from "./server.ts";
 import { renderDashboard } from "./dashboard.ts";
 import { parseCookies, signSession, verifySession } from "../auth/session.ts";
 import { verifyPassword } from "../auth/password.ts";
-import { getUserByEmail, getUserById, getCapabilities } from "../services/users.ts";
+import { getUserByEmail, getUserById, getCapabilities, listUsers, createUser } from "../services/users.ts";
+import { readRegistry, listInstalled, getRegistryProvider, installProvider } from "../services/providers.ts";
+import { listAccounts, createAccount } from "../services/accounts.ts";
+import { listBills } from "../services/bills.ts";
+import { listRuns } from "../services/runs.ts";
+import { reportSummary } from "../services/reports.ts";
+import { loadManifestFile } from "../plugins/validate.ts";
+import { repoRoot } from "../paths.ts";
+import { join } from "node:path";
 import { executeRun } from "../runner/index.ts";
 import { reviewBill } from "../services/review.ts";
 import { exportBill } from "../services/exporter.ts";
@@ -93,41 +101,96 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
         return json(res, 200, op ? { authenticated: true, name: op.name, capabilities: [...op.capabilities] } : { authenticated: false });
       }
 
-      // ---- Capability-gated human actions ----
-      if (req.method === "POST" && url.startsWith("/api/actions/")) {
+      // ---- Management API (operator session required) ----
+      if (url.startsWith("/api/")) {
         const op = await operatorFrom(req);
         if (!op) return json(res, 401, { ok: false, error: "operator login required" });
-        const action = url.slice("/api/actions/".length);
-        const body = ((await readJson(req)) ?? {}) as Record<string, unknown>;
+        const need = (cap: string) => op.capabilities.has(cap);
 
-        if (action === "run") {
-          if (!op.capabilities.has("jobs.run")) return json(res, 403, { ok: false, error: "missing capability jobs.run" });
-          const accountId = Number(body.accountId);
-          if (!accountId) return json(res, 400, { ok: false, error: "accountId required" });
-          const outcome = await executeRun(deps.pool, {
-            accountId,
-            artifactsDir: deps.config.artifactsDir,
-            confidenceThreshold: deps.config.reviewConfidenceThreshold,
-            brightData: deps.config.brightData,
-          });
-          return json(res, 200, { ok: true, outcome });
+        if (req.method === "GET") {
+          if (url === "/api/overview") return json(res, 200, await reportSummary(deps.pool));
+          if (url === "/api/providers") {
+            const registry = await readRegistry();
+            const installed = new Set((await listInstalled(deps.pool)).map((p) => p.id));
+            return json(res, 200, registry.map((p) => ({ ...p, installed: installed.has(p.id) })));
+          }
+          if (url === "/api/accounts") {
+            const accts = await listAccounts(deps.pool);
+            return json(res, 200, accts.map((a) => ({ id: a.id, provider: a.provider_id, displayName: a.display_name, ref: a.external_account_ref, brightDataAllowed: Boolean(a.brightdata_allowed), status: a.status })));
+          }
+          if (url === "/api/bills") return json(res, 200, await listBills(deps.pool, {}));
+          if (url === "/api/runs") return json(res, 200, await listRuns(deps.pool));
+          if (url === "/api/users") {
+            if (!need("users.manage")) return json(res, 403, { ok: false, error: "missing capability users.manage" });
+            return json(res, 200, await listUsers(deps.pool));
+          }
+          return json(res, 404, { ok: false, error: "unknown resource" });
         }
-        if (action === "review") {
-          if (!op.capabilities.has("bills.review")) return json(res, 403, { ok: false, error: "missing capability bills.review" });
-          const billId = Number(body.billId);
-          const decision = body.decision === "reject" ? "reject" : "approve";
-          if (!billId) return json(res, 400, { ok: false, error: "billId required" });
-          const outcome = await reviewBill(deps.pool, billId, decision, { reviewer: op.email });
-          return json(res, 200, { ok: true, outcome });
+
+        if (req.method === "POST") {
+          const body = ((await readJson(req)) ?? {}) as Record<string, unknown>;
+
+          if (url === "/api/providers/install") {
+            if (!need("providers.install")) return json(res, 403, { ok: false, error: "missing capability providers.install" });
+            const id = String(body.id ?? "");
+            const reg = await getRegistryProvider(id);
+            if (!reg) return json(res, 400, { ok: false, error: "unknown provider id" });
+            const m = await loadManifestFile(join(repoRoot, reg.package ?? `plugins/${id}`, "plugin.json"));
+            if (!m.ok || !m.manifest) return json(res, 400, { ok: false, error: `invalid manifest: ${m.errors.join("; ")}` });
+            await installProvider(deps.pool, m.manifest);
+            return json(res, 200, { ok: true, id });
+          }
+          if (url === "/api/accounts") {
+            if (!need("accounts.create")) return json(res, 403, { ok: false, error: "missing capability accounts.create" });
+            const providerId = String(body.providerId ?? "");
+            const displayName = String(body.displayName ?? "");
+            if (!providerId || !displayName) return json(res, 400, { ok: false, error: "providerId and displayName required" });
+            try {
+              const accId = await createAccount(deps.pool, { providerId, displayName, externalRef: body.ref ? String(body.ref) : undefined });
+              return json(res, 200, { ok: true, id: accId });
+            } catch (e) {
+              return json(res, 400, { ok: false, error: (e as Error).message });
+            }
+          }
+          if (url === "/api/users") {
+            if (!need("users.manage")) return json(res, 403, { ok: false, error: "missing capability users.manage" });
+            const name = String(body.name ?? "");
+            const email = String(body.email ?? "");
+            const password = String(body.password ?? "");
+            const roleCode = String(body.roleCode ?? "operator");
+            if (!name || !email || !password) return json(res, 400, { ok: false, error: "name, email, password required" });
+            try {
+              const uid = await createUser(deps.pool, { name, email, password, roleCode });
+              return json(res, 200, { ok: true, id: uid });
+            } catch (e) {
+              return json(res, 400, { ok: false, error: (e as Error).message });
+            }
+          }
+          if (url === "/api/actions/run") {
+            if (!need("jobs.run")) return json(res, 403, { ok: false, error: "missing capability jobs.run" });
+            const accountId = Number(body.accountId);
+            if (!accountId) return json(res, 400, { ok: false, error: "accountId required" });
+            const outcome = await executeRun(deps.pool, { accountId, artifactsDir: deps.config.artifactsDir, confidenceThreshold: deps.config.reviewConfidenceThreshold, brightData: deps.config.brightData });
+            return json(res, 200, { ok: true, outcome });
+          }
+          if (url === "/api/actions/review") {
+            if (!need("bills.review")) return json(res, 403, { ok: false, error: "missing capability bills.review" });
+            const billId = Number(body.billId);
+            const decision = body.decision === "reject" ? "reject" : "approve";
+            if (!billId) return json(res, 400, { ok: false, error: "billId required" });
+            const outcome = await reviewBill(deps.pool, billId, decision, { reviewer: op.email });
+            return json(res, 200, { ok: true, outcome });
+          }
+          if (url === "/api/actions/export") {
+            if (!need("bills.export")) return json(res, 403, { ok: false, error: "missing capability bills.export" });
+            const billId = Number(body.billId);
+            if (!billId) return json(res, 400, { ok: false, error: "billId required" });
+            const result = await exportBill(deps.pool, billId, deps.config.exportsDir);
+            return json(res, 200, { ok: true, path: result.path });
+          }
+          return json(res, 404, { ok: false, error: "unknown resource" });
         }
-        if (action === "export") {
-          if (!op.capabilities.has("bills.export")) return json(res, 403, { ok: false, error: "missing capability bills.export" });
-          const billId = Number(body.billId);
-          if (!billId) return json(res, 400, { ok: false, error: "billId required" });
-          const result = await exportBill(deps.pool, billId, deps.config.exportsDir);
-          return json(res, 200, { ok: true, path: result.path });
-        }
-        return json(res, 404, { ok: false, error: "unknown action" });
+        return json(res, 405, { ok: false, error: "method not allowed" });
       }
 
       // ---- MCP (agent transport) ----
