@@ -9,6 +9,8 @@ import { loadManifestFile } from "../plugins/validate.ts";
 import { readRegistry, listInstalled, installProvider } from "../services/providers.ts";
 import { createAccount, listAccounts } from "../services/accounts.ts";
 import { listBills, getBill } from "../services/bills.ts";
+import { reviewBill } from "../services/review.ts";
+import { exportBill } from "../services/exporter.ts";
 import { executeRun } from "../runner/index.ts";
 import { migrationsDir } from "../paths.ts";
 import { join } from "node:path";
@@ -340,6 +342,51 @@ async function cmdBillsShow(args: string[]): Promise<number> {
   }
 }
 
+async function cmdBillsReview(args: string[], flags: Record<string, string | boolean>): Promise<number> {
+  const id = Number(args[0] ?? 0);
+  const approve = flags.approve === true;
+  const reject = flags.reject === true;
+  if (!id || approve === reject) {
+    process.stderr.write("Usage: utility-watch bills:review <bill-id> (--approve | --reject) [--notes <text>]\n");
+    return 2;
+  }
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    const outcome = await reviewBill(pool, id, approve ? "approve" : "reject", {
+      notes: typeof flags.notes === "string" ? flags.notes : undefined,
+    });
+    process.stdout.write(`Bill ${outcome.billId} ${outcome.status}.\n`);
+    return 0;
+  } catch (e) {
+    process.stderr.write(`bills:review failed: ${(e as Error).message}\n`);
+    return 1;
+  } finally {
+    await pool.end();
+  }
+}
+
+async function cmdBillsExport(args: string[]): Promise<number> {
+  const id = Number(args[0] ?? 0);
+  if (!id) {
+    process.stderr.write("Usage: utility-watch bills:export <bill-id>\n");
+    return 2;
+  }
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  try {
+    const result = await exportBill(pool, id, config.exportsDir);
+    process.stderr.write(`Exported to ${result.path}\n`);
+    process.stdout.write(`${JSON.stringify(result.payload, null, 2)}\n`);
+    return 0;
+  } catch (e) {
+    process.stderr.write(`bills:export failed: ${(e as Error).message}\n`);
+    return 1;
+  } finally {
+    await pool.end();
+  }
+}
+
 function help(): number {
   process.stdout.write(
     [
@@ -361,6 +408,8 @@ function help(): number {
       "  runs:show             Show a run with its artifacts and log (<run-id>)",
       "  bills:list            List normalized bills (--status, --due-before)",
       "  bills:show            Show a normalized bill (<bill-id>)",
+      "  bills:review          Approve or reject a bill (--approve|--reject)",
+      "  bills:export          Export an approved bill as JSON (<bill-id>)",
       "",
     ].join("\n"),
   );
@@ -398,6 +447,10 @@ async function main(): Promise<number> {
       return cmdBillsList(flags);
     case "bills:show":
       return cmdBillsShow(rest);
+    case "bills:review":
+      return cmdBillsReview(rest, flags);
+    case "bills:export":
+      return cmdBillsExport(rest);
     case "setup:check":
       return cmdSetupCheck();
     case "setup":
