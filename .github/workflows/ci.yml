@@ -21,12 +21,11 @@ jobs:
       - name: Unit tests
         run: npm test
       - name: Plugin fixture tests
-        run: npm run -w @utility-watch/provider-mock test:plugin
+        run: npm run test:plugin --workspaces --if-present
       - name: Validate registry + manifests are JSON
         run: |
           node -e "JSON.parse(require('fs').readFileSync('registry/providers.json','utf8'))"
-          node -e "JSON.parse(require('fs').readFileSync('plugins/example-provider/plugin.json','utf8'))"
-          node -e "JSON.parse(require('fs').readFileSync('plugins/mock-provider/plugin.json','utf8'))"
+          for f in plugins/*/plugin.json; do node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"; done
       - name: No prohibited private terms
         run: |
           ! grep -rinwE 'client|client|propertya|propertyb|a prior system' \

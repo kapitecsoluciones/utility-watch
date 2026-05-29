@@ -262,6 +262,7 @@ async function cmdRun(flags: Record<string, string | boolean>): Promise<number> 
       accountId,
       artifactsDir: config.artifactsDir,
       confidenceThreshold: config.reviewConfidenceThreshold,
+      brightData: config.brightData,
     });
     process.stdout.write(`${JSON.stringify(outcome, null, 2)}\n`);
     return outcome.status === "failed" ? 1 : 0;
@@ -410,6 +411,7 @@ async function cmdDemoSeed(): Promise<number> {
         accountId,
         artifactsDir: config.artifactsDir,
         confidenceThreshold: config.reviewConfidenceThreshold,
+        brightData: config.brightData,
       });
     }
     process.stdout.write(`Demo seeded: mock-provider installed, account ${accountId}, ${existing.length ? "bill exists" : "bill created"}.\n`);
