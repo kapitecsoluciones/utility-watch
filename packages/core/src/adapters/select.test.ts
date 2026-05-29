@@ -12,7 +12,7 @@ const baseConfig = (over: Partial<AppConfig["brightData"]> = {}): AppConfig => (
   installType: "local-demo",
   logLevel: "info",
   reviewConfidenceThreshold: 0.85,
-  brightData: { enabled: false, apiKey: "", browserUrl: "", ...over },
+  brightData: { enabled: false, apiKey: "", browserUrl: "", zone: "mcp_unlocker", country: "us", ...over },
 });
 
 const manifest = (brightData: ProviderManifest["permissions"]["brightData"]): ProviderManifest =>

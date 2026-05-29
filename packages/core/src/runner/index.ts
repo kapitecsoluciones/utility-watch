@@ -5,7 +5,7 @@ import type { Pool, ResultSetHeader } from "mysql2/promise";
 import { loadProvider } from "../plugins/loader.ts";
 import { loadManifestFile } from "../plugins/validate.ts";
 import { selectAdapter } from "../adapters/select.ts";
-import { openBrightDataBrowser } from "../adapters/brightdata.ts";
+import { openBrightDataBrowser, fetchViaBrightData } from "../adapters/brightdata.ts";
 import { getAccount } from "../services/accounts.ts";
 import { getRegistryProvider, getProviderManifest } from "../services/providers.ts";
 import { parseDeclarative } from "../plugins/declarative.ts";
@@ -45,7 +45,7 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
 
   // Choose the execution adapter from the manifest + account opt-in + policy
   // (fail-closed: Bright Data only when explicitly enabled, supported, opted in).
-  const brightData = opts.brightData ?? { enabled: false, apiKey: "", browserUrl: "" };
+  const brightData = opts.brightData ?? { enabled: false, apiKey: "", browserUrl: "", zone: "mcp_unlocker", country: "us" };
   const manifestRes = await loadManifestFile(join(pluginDir, "plugin.json"));
   const selection =
     manifestRes.ok && manifestRes.manifest
@@ -186,11 +186,14 @@ export async function ingestArtifact(pool: Pool, opts: IngestOptions): Promise<R
   if (!account) throw new Error(`account ${opts.accountId} not found`);
   const manifest = await getProviderManifest(pool, account.provider_id);
   const url = opts.url ?? account.fetch_url ?? undefined;
-  const adapter = opts.content != null ? "manual" : "fetch";
+  const bd = opts.brightData;
+  const useBrightData = Boolean(opts.content == null && url && bd?.enabled && bd.apiKey);
+  const adapter = opts.content != null ? "manual" : useBrightData ? "brightdata" : "fetch";
+  const adapterReason = opts.content != null ? "manual upload" : `${useBrightData ? "bright-data fetch" : "fetch"} ${url ?? ""}`.trim();
 
   const [runRes] = await pool.query<ResultSetHeader>(
     "INSERT INTO runs (account_id, provider_id, adapter, adapter_reason, status, started_at) VALUES (?, ?, ?, ?, 'running', NOW())",
-    [account.id, account.provider_id, adapter, opts.content != null ? "manual upload" : `fetch ${url ?? ""}`.trim()],
+    [account.id, account.provider_id, adapter, adapterReason],
   );
   const runId = runRes.insertId;
   const log = (level: string, event: string, message: string, meta?: Record<string, unknown>) =>
@@ -206,7 +209,9 @@ export async function ingestArtifact(pool: Pool, opts: IngestOptions): Promise<R
     if (opts.content != null) {
       artifact = { content: opts.content, contentType: opts.contentType ?? "text" };
     } else if (url) {
-      artifact = await fetchArtifact(url, { allowedHosts: manifest?.permissions?.network ?? [] });
+      artifact = useBrightData
+        ? await fetchViaBrightData(url, { apiKey: bd!.apiKey, zone: bd!.zone, country: bd!.country })
+        : await fetchArtifact(url, { allowedHosts: manifest?.permissions?.network ?? [] });
     } else {
       return fail("error.unknown", "ingest requires content or a url");
     }

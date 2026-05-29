@@ -1,4 +1,48 @@
-import type { BrowserSession } from "../plugins/contract.ts";
+import type { BrowserSession, RawBillArtifact } from "../plugins/contract.ts";
+
+const BRIGHTDATA_REQUEST_URL = "https://api.brightdata.com/request";
+const BD_TIMEOUT_MS = 60_000;
+
+/**
+ * Fetch a public page through the Bright Data Web Unlocker (a residential-IP
+ * unblocking proxy) and return its body as a raw artifact for normalization.
+ * This is the live-retrieval path for declarative providers: the operator's
+ * "Fetch URL" goes out through Bright Data instead of a direct request, so a
+ * geo/datacenter-blocked public utility portal becomes reachable. The token is
+ * a handle held in config (BRIGHTDATA_API_KEY); only the URL is sent out.
+ */
+export async function fetchViaBrightData(
+  url: string,
+  opts: { apiKey: string; zone: string; country?: string },
+): Promise<RawBillArtifact> {
+  if (!opts.apiKey) throw new Error("Bright Data fetch selected but BRIGHTDATA_API_KEY is not set");
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new Error("invalid URL");
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("only http(s) URLs are allowed");
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), BD_TIMEOUT_MS);
+  try {
+    const res = await fetch(BRIGHTDATA_REQUEST_URL, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: { authorization: `Bearer ${opts.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ zone: opts.zone, url: u.toString(), format: "raw", country: opts.country ?? "us" }),
+    });
+    const body = await res.text();
+    if (!res.ok) throw new Error(`Bright Data request failed: HTTP ${res.status} ${body.slice(0, 200)}`);
+    const trimmed = body.trimStart();
+    const contentType: RawBillArtifact["contentType"] =
+      trimmed.startsWith("{") || trimmed.startsWith("[") ? "json" : /<html|<!doctype/i.test(trimmed.slice(0, 200)) ? "html" : "text";
+    return { content: body, contentType, sourceUrl: u.toString() };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Connect to the Bright Data Scraping Browser over CDP and hand back a page.
