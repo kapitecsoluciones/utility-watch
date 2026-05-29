@@ -51,7 +51,10 @@ services:
       DEMO_OPERATOR_EMAIL: ${DEMO_OPERATOR_EMAIL:-}
       DEMO_OPERATOR_PASSWORD: ${DEMO_OPERATOR_PASSWORD:-}
       LOG_LEVEL: info
-      BRIGHTDATA_ENABLED: "false"
+      BRIGHTDATA_ENABLED: ${BRIGHTDATA_ENABLED:-false}
+      BRIGHTDATA_API_KEY: ${BRIGHTDATA_API_KEY:-}
+      BRIGHTDATA_ZONE: ${BRIGHTDATA_ZONE:-mcp_unlocker}
+      BRIGHTDATA_COUNTRY: ${BRIGHTDATA_COUNTRY:-us}
     command: sh -c "npm run -s utility-watch -- db:migrate && npm run -s utility-watch -- demo:seed && npm run -s utility-watch -- mcp"
     ports:
       - "${MCP_HOST_PORT:-8089}:8080"
