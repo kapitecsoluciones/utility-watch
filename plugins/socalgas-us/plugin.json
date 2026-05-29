@@ -1,0 +1,41 @@
+{
+  "id": "socalgas-us",
+  "name": "SoCalGas",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "schemaVersion": "uw-plugin-v1",
+  "coreVersion": ">=0.1.0 <1.0.0",
+  "country": "US",
+  "serviceTypes": ["gas"],
+  "homepage": "https://www.socalgas.com",
+  "entrypoint": "./src/index.ts",
+  "capabilities": ["auth.login", "accounts.list", "bills.list", "bills.download", "bills.normalize"],
+  "auth": {
+    "type": "username-password",
+    "secretRefs": ["username", "password"]
+  },
+  "permissions": {
+    "network": ["socalgas.com", "*.socalgas.com"],
+    "artifacts": ["html", "json", "screenshot", "text"],
+    "filesystem": "artifacts-only",
+    "brightData": "supported"
+  },
+  "quality": {
+    "status": "draft",
+    "verification": "fixture-only",
+    "lastVerified": null,
+    "limitations": [
+      "Public repo ships the parser with a synthetic JSON fixture only",
+      "Live retrieval intercepts the portal's billing API via the Bright Data Scraping Browser (not in the public repo)",
+      "MFA challenges route to human review"
+    ]
+  },
+  "tests": {
+    "fixtures": "./fixtures",
+    "healthcheck": "npm run test:plugin"
+  },
+  "support": {
+    "maintainer": "Utility Watch Maintainers",
+    "url": "https://github.com/kapitecsoluciones/utility-watch/issues"
+  }
+}

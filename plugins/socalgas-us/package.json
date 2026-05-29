@@ -1,0 +1,11 @@
+{
+  "name": "@utility-watch/provider-socalgas-us",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "SoCalGas (gas) — real-pattern provider parsing an intercepted JSON API response (synthetic fixture).",
+  "scripts": {
+    "test:plugin": "node --import tsx --test src/parser.test.ts"
+  }
+}

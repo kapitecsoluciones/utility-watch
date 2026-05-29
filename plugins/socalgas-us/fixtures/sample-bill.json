@@ -1,0 +1,13 @@
+{
+  "_note": "Synthetic sample of the shape SoCalGas's billing API returns; not real data.",
+  "accountNumber": "0123456789",
+  "statementDate": "2026-05-03",
+  "servicePeriod": { "start": "2026-04-01", "end": "2026-04-30" },
+  "amountDue": 87.65,
+  "dueDate": "2026-05-25",
+  "currency": "USD",
+  "charges": [
+    { "description": "Gas usage (therms)", "amount": 61.2 },
+    { "description": "Taxes and fees", "amount": 26.45 }
+  ]
+}

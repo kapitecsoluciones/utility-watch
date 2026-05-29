@@ -395,6 +395,7 @@ async function cmdDemoSeed(): Promise<number> {
   const seeds = [
     { id: "mock-provider", name: "Demo Account (synthetic)", ref: "DEMO-0001" },
     { id: "sce-us", name: "SCE Demo (synthetic)", ref: "3-001-2345-67" },
+    { id: "socalgas-us", name: "SoCalGas Demo (synthetic)", ref: "0123456789" },
   ];
   try {
     await runMigrations(pool, migrationsDir);
