@@ -46,7 +46,7 @@ const LANDING = `<!doctype html>
 
   <header class="max-w-6xl mx-auto px-6 pt-14 pb-20 grid md:grid-cols-2 gap-10 items-center">
     <div>
-      <span class="pill">Open-source · Apache-2.0 · Bright Data hackathon</span>
+      <span class="pill">Open-source · Apache-2.0 · Agent-native</span>
       <h1 class="text-5xl font-bold mt-5 leading-[1.05]">Utility bills,<br><span class="grad">built for agents.</span></h1>
       <p class="text-slate-600 text-lg mt-5 max-w-xl">Retrieve, normalize, review, and export utility bills from fragmented
       provider portals — through one stable core, installable provider plugins, and an MCP server your AI agents plug into.
