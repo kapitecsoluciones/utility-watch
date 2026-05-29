@@ -1,0 +1,12 @@
+Southern California Edison
+Your Energy Statement (SAMPLE — synthetic, not a real bill)
+Service Account: 3-001-2345-67
+Bill Date: 05/02/2026
+Billing Period: 04/01/2026 - 04/30/2026
+Total Amount Due: $342.18
+Payment Due Date: 05/24/2026
+
+Details
+Generation charges      $180.05
+Delivery charges        $132.40
+Taxes and surcharges     $29.73

@@ -3,15 +3,20 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import type { Pool, ResultSetHeader } from "mysql2/promise";
 import { loadProvider } from "../plugins/loader.ts";
+import { loadManifestFile } from "../plugins/validate.ts";
+import { selectAdapter } from "../adapters/select.ts";
+import { openBrightDataBrowser } from "../adapters/brightdata.ts";
 import { getAccount } from "../services/accounts.ts";
 import { getRegistryProvider } from "../services/providers.ts";
 import { repoRoot } from "../paths.ts";
 import type { ProviderContext, NormalizedBill, ErrorCode, RawBillArtifact } from "../plugins/contract.ts";
+import type { BrightDataConfig } from "../config/index.ts";
 
 export interface RunOptions {
   accountId: number;
   artifactsDir: string;
   confidenceThreshold: number;
+  brightData?: BrightDataConfig;
 }
 
 export interface RunOutcome {
@@ -36,14 +41,21 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
   const reg = await getRegistryProvider(account.provider_id);
   const pluginDir = join(repoRoot, reg?.package ?? `plugins/${account.provider_id}`);
 
-  // v0: the mock/local provider needs no remote browser. Real providers will
-  // select local-playwright or brightdata-scraping-browser here.
-  const adapter = "local";
-  const adapterReason = "local provider; no remote browser required";
+  // Choose the execution adapter from the manifest + account opt-in + policy
+  // (fail-closed: Bright Data only when explicitly enabled, supported, opted in).
+  const brightData = opts.brightData ?? { enabled: false, apiKey: "", browserUrl: "" };
+  const manifestRes = await loadManifestFile(join(pluginDir, "plugin.json"));
+  const selection =
+    manifestRes.ok && manifestRes.manifest
+      ? selectAdapter(
+          { manifest: manifestRes.manifest, accountBrightDataAllowed: Boolean(account.brightdata_allowed) },
+          { brightData },
+        )
+      : { adapter: "local" as const, reason: "manifest unavailable" };
 
   const [runRes] = await pool.query<ResultSetHeader>(
     "INSERT INTO runs (account_id, provider_id, adapter, adapter_reason, status, started_at) VALUES (?, ?, ?, ?, 'running', NOW())",
-    [account.id, account.provider_id, adapter, adapterReason],
+    [account.id, account.provider_id, selection.adapter, selection.reason],
   );
   const runId = runRes.insertId;
 
@@ -76,6 +88,9 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
       },
       account: { ref: account.external_account_ref ?? account.display_name, displayName: account.display_name },
       getSecret: (name) => process.env[`SECRET_${name.toUpperCase()}`],
+      ...(selection.adapter === "brightdata-scraping-browser"
+        ? { openBrowser: () => openBrightDataBrowser(brightData.browserUrl) }
+        : {}),
     };
 
     if (provider.healthcheck) {

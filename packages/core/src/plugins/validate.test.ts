@@ -6,7 +6,7 @@ import { validateManifest } from "./validate.ts";
 import { repoRoot } from "../paths.ts";
 
 test("validateManifest accepts the committed example and mock manifests", async () => {
-  for (const dir of ["example-provider", "mock-provider"]) {
+  for (const dir of ["example-provider", "mock-provider", "sce-us"]) {
     const manifest = JSON.parse(await readFile(join(repoRoot, "plugins", dir, "plugin.json"), "utf8"));
     const res = validateManifest(manifest);
     assert.equal(res.ok, true, `${dir} should be valid: ${res.errors.join("; ")}`);

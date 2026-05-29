@@ -1,0 +1,16 @@
+{
+  "providerId": "sce-us",
+  "accountRef": "3-001-2345-67",
+  "statementDate": "2026-05-02",
+  "periodStart": "2026-04-01",
+  "periodEnd": "2026-04-30",
+  "dueDate": "2026-05-24",
+  "amountDue": 342.18,
+  "currency": "USD",
+  "confidence": 0.9,
+  "lineItems": [
+    { "label": "Generation charges", "amount": 180.05 },
+    { "label": "Delivery charges", "amount": 132.4 },
+    { "label": "Taxes and surcharges", "amount": 29.73 }
+  ]
+}

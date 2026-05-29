@@ -73,6 +73,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         accountId: account_id,
         artifactsDir: config.artifactsDir,
         confidenceThreshold: config.reviewConfidenceThreshold,
+        brightData: config.brightData,
       });
       return ok(outcome);
     },

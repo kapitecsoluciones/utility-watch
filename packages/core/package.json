@@ -18,12 +18,13 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
     "dev": "node --import tsx src/cli/index.ts",
-    "test": "node --import tsx --test src/config/config.test.ts src/auth/password.test.ts src/db/migrate.test.ts src/plugins/validate.test.ts src/plugins/loader.test.ts"
+    "test": "node --import tsx --test src/config/config.test.ts src/auth/password.test.ts src/db/migrate.test.ts src/plugins/validate.test.ts src/plugins/loader.test.ts src/adapters/select.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^16.4.7",
     "mysql2": "^3.12.0",
+    "playwright-core": "^1.49.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
