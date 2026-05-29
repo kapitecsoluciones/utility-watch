@@ -392,29 +392,31 @@ async function cmdBillsExport(args: string[]): Promise<number> {
 async function cmdDemoSeed(): Promise<number> {
   const config = loadConfigOrExit();
   const pool = createPool(config.db, { multipleStatements: true });
+  const seeds = [
+    { id: "mock-provider", name: "Demo Account (synthetic)", ref: "DEMO-0001" },
+    { id: "sce-us", name: "SCE Demo (synthetic)", ref: "3-001-2345-67" },
+  ];
   try {
     await runMigrations(pool, migrationsDir);
-    const res = await loadManifestFile(join(repoRoot, "plugins", "mock-provider", "plugin.json"));
-    if (res.ok && res.manifest) await installProvider(pool, res.manifest);
-    const accounts = await listAccounts(pool);
-    let accountId = accounts.find((a) => a.provider_id === "mock-provider")?.id;
-    if (!accountId) {
-      accountId = await createAccount(pool, {
-        providerId: "mock-provider",
-        displayName: "Demo Account (synthetic)",
-        externalRef: "DEMO-0001",
-      });
+    for (const seed of seeds) {
+      const res = await loadManifestFile(join(repoRoot, "plugins", seed.id, "plugin.json"));
+      if (res.ok && res.manifest) await installProvider(pool, res.manifest);
+      const accounts = await listAccounts(pool);
+      let accountId = accounts.find((a) => a.provider_id === seed.id)?.id;
+      if (!accountId) {
+        accountId = await createAccount(pool, { providerId: seed.id, displayName: seed.name, externalRef: seed.ref });
+      }
+      const existing = await listBills(pool, { accountId });
+      if (!existing.length) {
+        await executeRun(pool, {
+          accountId,
+          artifactsDir: config.artifactsDir,
+          confidenceThreshold: config.reviewConfidenceThreshold,
+          brightData: config.brightData,
+        });
+      }
     }
-    const existing = await listBills(pool, { accountId });
-    if (!existing.length) {
-      await executeRun(pool, {
-        accountId,
-        artifactsDir: config.artifactsDir,
-        confidenceThreshold: config.reviewConfidenceThreshold,
-        brightData: config.brightData,
-      });
-    }
-    process.stdout.write(`Demo seeded: mock-provider installed, account ${accountId}, ${existing.length ? "bill exists" : "bill created"}.\n`);
+    process.stdout.write(`Demo seeded: ${seeds.map((s) => s.id).join(", ")} (each with an account and a bill).\n`);
     return 0;
   } finally {
     await pool.end();
