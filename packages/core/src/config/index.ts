@@ -14,6 +14,8 @@ export interface BrightDataConfig {
   enabled: boolean;
   apiKey: string;
   browserUrl: string;
+  zone: string;
+  country: string;
 }
 
 export interface AppConfig {
@@ -81,6 +83,8 @@ export function loadConfig(env: Env = process.env): AppConfig {
     enabled,
     apiKey: env.BRIGHTDATA_API_KEY ?? "",
     browserUrl: env.BRIGHTDATA_BROWSER_URL ?? "",
+    zone: env.BRIGHTDATA_ZONE ?? "mcp_unlocker",
+    country: (env.BRIGHTDATA_COUNTRY ?? "us").toLowerCase(),
   };
   if (enabled && !brightData.apiKey && !brightData.browserUrl) {
     problems.push("BRIGHTDATA_ENABLED is true but neither BRIGHTDATA_API_KEY nor BRIGHTDATA_BROWSER_URL is set");
