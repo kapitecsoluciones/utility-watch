@@ -7,7 +7,7 @@ import { renderDashboard } from "./dashboard.ts";
 import { renderLanding } from "./landing.ts";
 import { readFile } from "node:fs/promises";
 import { parseCookies, signSession, verifySession } from "../auth/session.ts";
-import { verifyPassword } from "../auth/password.ts";
+import { verifyPassword, hashPassword } from "../auth/password.ts";
 import { getUserByEmail, getUserById, getCapabilities, listUsers, createUser } from "../services/users.ts";
 import { readRegistry, listInstalled, getRegistryProvider, installProvider } from "../services/providers.ts";
 import { listAccounts, createAccount } from "../services/accounts.ts";
@@ -16,7 +16,15 @@ import { listRuns } from "../services/runs.ts";
 import { reportSummary } from "../services/reports.ts";
 import { loadManifestFile } from "../plugins/validate.ts";
 import { repoRoot, coreRoot } from "../paths.ts";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+
+// Dummy hash so login does equal work whether or not the email exists (anti-enumeration).
+const DUMMY_HASH = hashPassword(randomUUID());
+const posInt = (v: unknown): number | null => {
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 import { executeRun } from "../runner/index.ts";
 import { reviewBill } from "../services/review.ts";
 import { exportBill } from "../services/exporter.ts";
@@ -99,7 +107,9 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
       if (req.method === "POST" && url === "/login") {
         const body = (await readJson(req)) as { email?: string; password?: string } | undefined;
         const user = body?.email ? await getUserByEmail(deps.pool, body.email) : null;
-        if (!user || user.status !== "active" || !body?.password || !verifyPassword(body.password, user.password_hash)) {
+        const hash = user && user.status === "active" ? user.password_hash : DUMMY_HASH;
+        const okPw = body?.password ? verifyPassword(body.password, hash) : false;
+        if (!user || user.status !== "active" || !okPw) {
           return json(res, 401, { ok: false, error: "invalid credentials" });
         }
         const cookie = `uw_session=${signSession(user.id)}; HttpOnly; Path=/; SameSite=Strict; Max-Age=43200${secure ? "; Secure" : ""}`;
@@ -147,9 +157,14 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
           if (url === "/api/providers/install") {
             if (!need("providers.install")) return json(res, 403, { ok: false, error: "missing capability providers.install" });
             const id = String(body.id ?? "");
+            if (!SLUG.test(id)) return json(res, 400, { ok: false, error: "invalid provider id" });
             const reg = await getRegistryProvider(id);
             if (!reg) return json(res, 400, { ok: false, error: "unknown provider id" });
-            const m = await loadManifestFile(join(repoRoot, reg.package ?? `plugins/${id}`, "plugin.json"));
+            const pkgDir = resolve(repoRoot, reg.package ?? `plugins/${id}`);
+            if (pkgDir !== resolve(repoRoot) && !pkgDir.startsWith(resolve(repoRoot) + "/")) {
+              return json(res, 400, { ok: false, error: "invalid package path" });
+            }
+            const m = await loadManifestFile(join(pkgDir, "plugin.json"));
             if (!m.ok || !m.manifest) return json(res, 400, { ok: false, error: `invalid manifest: ${m.errors.join("; ")}` });
             await installProvider(deps.pool, m.manifest);
             return json(res, 200, { ok: true, id });
@@ -182,23 +197,23 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
           }
           if (url === "/api/actions/run") {
             if (!need("jobs.run")) return json(res, 403, { ok: false, error: "missing capability jobs.run" });
-            const accountId = Number(body.accountId);
-            if (!accountId) return json(res, 400, { ok: false, error: "accountId required" });
+            const accountId = posInt(body.accountId);
+            if (!accountId) return json(res, 400, { ok: false, error: "valid accountId required" });
             const outcome = await executeRun(deps.pool, { accountId, artifactsDir: deps.config.artifactsDir, confidenceThreshold: deps.config.reviewConfidenceThreshold, brightData: deps.config.brightData });
             return json(res, 200, { ok: true, outcome });
           }
           if (url === "/api/actions/review") {
             if (!need("bills.review")) return json(res, 403, { ok: false, error: "missing capability bills.review" });
-            const billId = Number(body.billId);
+            const billId = posInt(body.billId);
             const decision = body.decision === "reject" ? "reject" : "approve";
-            if (!billId) return json(res, 400, { ok: false, error: "billId required" });
+            if (!billId) return json(res, 400, { ok: false, error: "valid billId required" });
             const outcome = await reviewBill(deps.pool, billId, decision, { reviewer: op.email });
             return json(res, 200, { ok: true, outcome });
           }
           if (url === "/api/actions/export") {
             if (!need("bills.export")) return json(res, 403, { ok: false, error: "missing capability bills.export" });
-            const billId = Number(body.billId);
-            if (!billId) return json(res, 400, { ok: false, error: "billId required" });
+            const billId = posInt(body.billId);
+            if (!billId) return json(res, 400, { ok: false, error: "valid billId required" });
             const result = await exportBill(deps.pool, billId, deps.config.exportsDir);
             return json(res, 200, { ok: true, path: result.path });
           }
