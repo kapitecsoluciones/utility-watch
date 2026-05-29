@@ -21,7 +21,9 @@
     "test": "node --import tsx --test src/config/config.test.ts src/auth/password.test.ts src/db/migrate.test.ts src/plugins/validate.test.ts src/plugins/loader.test.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^16.4.7",
+    "express": "^5.2.1",
     "mysql2": "^3.12.0"
   },
   "devDependencies": {

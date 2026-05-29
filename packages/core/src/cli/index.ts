@@ -12,6 +12,9 @@ import { listBills, getBill } from "../services/bills.ts";
 import { reviewBill } from "../services/review.ts";
 import { exportBill } from "../services/exporter.ts";
 import { executeRun } from "../runner/index.ts";
+import { buildMcpServer, DEFAULT_AGENT_CAPABILITIES } from "../mcp/server.ts";
+import { startHttpServer } from "../mcp/http.ts";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { migrationsDir } from "../paths.ts";
 import { join } from "node:path";
 import type { RowDataPacket } from "mysql2/promise";
@@ -387,6 +390,32 @@ async function cmdBillsExport(args: string[]): Promise<number> {
   }
 }
 
+function agentCapabilities(): Set<string> {
+  const env = process.env.AGENT_CAPABILITIES;
+  const caps = env ? env.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_AGENT_CAPABILITIES;
+  return new Set(caps);
+}
+
+async function cmdMcpHttp(): Promise<number> {
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  const port = Number(process.env.MCP_PORT ?? "8080");
+  startHttpServer({ pool, config, capabilities: agentCapabilities() }, port);
+  process.stderr.write(`utility-watch MCP (Streamable HTTP) listening on :${port}/mcp\n`);
+  await new Promise<never>(() => {});
+  return 0;
+}
+
+async function cmdMcpStdio(): Promise<number> {
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  const server = buildMcpServer({ pool, config, capabilities: agentCapabilities() });
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  await new Promise<never>(() => {});
+  return 0;
+}
+
 function help(): number {
   process.stdout.write(
     [
@@ -410,6 +439,8 @@ function help(): number {
       "  bills:show            Show a normalized bill (<bill-id>)",
       "  bills:review          Approve or reject a bill (--approve|--reject)",
       "  bills:export          Export an approved bill as JSON (<bill-id>)",
+      "  mcp                   Start the MCP server over Streamable HTTP (agent face)",
+      "  mcp:stdio             Start the MCP server over stdio (local agent)",
       "",
     ].join("\n"),
   );
@@ -451,6 +482,10 @@ async function main(): Promise<number> {
       return cmdBillsReview(rest, flags);
     case "bills:export":
       return cmdBillsExport(rest);
+    case "mcp":
+      return cmdMcpHttp();
+    case "mcp:stdio":
+      return cmdMcpStdio();
     case "setup:check":
       return cmdSetupCheck();
     case "setup":
