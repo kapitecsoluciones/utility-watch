@@ -1,5 +1,6 @@
 import { writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import type { Pool, ResultSetHeader } from "mysql2/promise";
 import { loadProvider } from "../plugins/loader.ts";
@@ -28,6 +29,9 @@ export interface RunOutcome {
   runId: number;
   status: string;
   billId?: number;
+  /** All bills produced by this run (a single login can yield many accounts). */
+  billIds?: number[];
+  billCount?: number;
   confidence?: number;
   errorCode?: ErrorCode;
   errorMessage?: string;
@@ -39,6 +43,21 @@ export interface RunOutcome {
  * record an audit trail. Errors map to the shared taxonomy and never throw out
  * of the function once a run row exists. The MCP `run_retrieval` tool calls this.
  */
+/**
+ * Resolve a code provider's plugin directory. Checks EXTRA_PLUGINS_DIR/<id>
+ * first (private providers mounted outside the repo — the "plugins directory"
+ * model), then the registry package path, then the bundled plugins/ dir.
+ */
+export function resolveProviderDir(providerId: string, registryPackage?: string): string {
+  const extra = process.env.EXTRA_PLUGINS_DIR;
+  if (extra) {
+    const candidate = join(extra, providerId);
+    if (existsSync(join(candidate, "plugin.json"))) return candidate;
+  }
+  if (registryPackage) return resolve(repoRoot, registryPackage);
+  return join(repoRoot, "plugins", providerId);
+}
+
 /** Decrypt a provider's declared secretRefs from the store into a name→value map. */
 async function loadSecretRefs(pool: Pool, secretsKey: string | undefined, refs: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
@@ -56,7 +75,7 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
   if (!account) throw new Error(`account ${opts.accountId} not found`);
 
   const reg = await getRegistryProvider(account.provider_id);
-  const pluginDir = join(repoRoot, reg?.package ?? `plugins/${account.provider_id}`);
+  const pluginDir = resolveProviderDir(account.provider_id, reg?.package);
 
   // Choose the execution adapter from the manifest + account opt-in + policy
   // (fail-closed: Bright Data only when explicitly enabled, supported, opted in).
@@ -128,57 +147,67 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
 
     const bills = await provider.listBills(ctx);
     if (!bills.length) return fail("failed", "bill.not_found", "login succeeded but no bills were available");
-    const candidate = bills[0]!;
-
-    const artifact: RawBillArtifact = await provider.downloadBill(ctx, candidate);
 
     const runDir = join(opts.artifactsDir, `run-${runId}`);
     await mkdir(runDir, { recursive: true });
-    const ext = artifact.contentType === "json" ? "json" : artifact.contentType === "html" ? "html" : "txt";
-    const artifactPath = join(runDir, `bill.${ext}`);
-    await writeFile(artifactPath, artifact.content, "utf8");
-    const sha = createHash("sha256").update(artifact.content).digest("hex");
-    const [artRes] = await pool.query<ResultSetHeader>(
-      "INSERT INTO artifacts (run_id, type, path, mime_type, sha256, redaction_status) VALUES (?, ?, ?, ?, ?, 'synthetic')",
-      [runId, artifact.contentType === "json" ? "json" : "text", artifactPath, "text/plain", sha],
-    );
-    const artifactId = artRes.insertId;
-    await log("info", "artifact.captured", artifactPath, { sha256: sha });
 
-    const bill: NormalizedBill = await provider.normalizeBill(ctx, artifact);
-    const [billRes] = await pool.query<ResultSetHeader>(
-      `INSERT INTO bills
-         (run_id, account_id, provider_id, statement_date, period_start, period_end, due_date,
-          amount_due, currency, normalized_json, confidence_score, source_url, primary_artifact_id, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'needs_review')`,
-      [
-        runId,
-        account.id,
-        account.provider_id,
-        bill.statementDate,
-        bill.periodStart,
-        bill.periodEnd,
-        bill.dueDate,
-        bill.amountDue,
-        bill.currency,
-        JSON.stringify(bill),
-        bill.confidence,
-        bill.sourceUrl,
-        artifactId,
-      ],
-    );
-    const billId = billRes.insertId;
-    await pool.query("INSERT INTO reviews (bill_id, status) VALUES (?, 'pending')", [billId]);
+    // A single login can cover many accounts (e.g. one portal login → N
+    // properties). Persist one artifact + bill + review per candidate.
+    const billIds: number[] = [];
+    let minConfidence = 1;
+    for (let i = 0; i < bills.length; i++) {
+      const candidate = bills[i]!;
+      const artifact: RawBillArtifact = await provider.downloadBill(ctx, candidate);
+      const ext = artifact.contentType === "json" ? "json" : artifact.contentType === "html" ? "html" : "txt";
+      const artifactPath = join(runDir, `bill-${i}.${ext}`);
+      await writeFile(artifactPath, artifact.content, "utf8");
+      const sha = createHash("sha256").update(artifact.content).digest("hex");
+      const [artRes] = await pool.query<ResultSetHeader>(
+        "INSERT INTO artifacts (run_id, type, path, mime_type, sha256, redaction_status) VALUES (?, ?, ?, ?, ?, 'synthetic')",
+        [runId, artifact.contentType === "json" ? "json" : "text", artifactPath, "text/plain", sha],
+      );
+      const artifactId = artRes.insertId;
+      await log("info", "artifact.captured", artifactPath, { sha256: sha });
 
-    if (bill.confidence < opts.confidenceThreshold) {
-      await log("warn", "bill.low_confidence", `confidence ${bill.confidence} < threshold ${opts.confidenceThreshold}`, {
-        code: "bill.low_confidence",
-      });
+      const bill: NormalizedBill = await provider.normalizeBill(ctx, artifact);
+      const billAccountRef =
+        bill.accountRef && bill.accountRef !== "unknown" ? bill.accountRef : candidate.externalRef ?? candidate.label ?? candidate.id;
+      const [billRes] = await pool.query<ResultSetHeader>(
+        `INSERT INTO bills
+           (run_id, account_id, provider_id, account_ref, statement_date, period_start, period_end, due_date,
+            amount_due, currency, normalized_json, confidence_score, source_url, primary_artifact_id, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'needs_review')`,
+        [
+          runId,
+          account.id,
+          account.provider_id,
+          billAccountRef ?? null,
+          bill.statementDate,
+          bill.periodStart,
+          bill.periodEnd,
+          bill.dueDate,
+          bill.amountDue,
+          bill.currency,
+          JSON.stringify(bill),
+          bill.confidence,
+          bill.sourceUrl,
+          artifactId,
+        ],
+      );
+      const billId = billRes.insertId;
+      await pool.query("INSERT INTO reviews (bill_id, status) VALUES (?, 'pending')", [billId]);
+      billIds.push(billId);
+      if (bill.confidence < minConfidence) minConfidence = bill.confidence;
+      if (bill.confidence < opts.confidenceThreshold) {
+        await log("warn", "bill.low_confidence", `bill ${billId} confidence ${bill.confidence} < threshold ${opts.confidenceThreshold}`, {
+          code: "bill.low_confidence",
+        });
+      }
     }
 
     await pool.query("UPDATE runs SET status = 'needs_review', finished_at = NOW() WHERE id = ?", [runId]);
-    await log("info", "run.completed", `bill ${billId} created and queued for review`);
-    return { runId, status: "needs_review", billId, confidence: bill.confidence };
+    await log("info", "run.completed", `${billIds.length} bill(s) created and queued for review`);
+    return { runId, status: "needs_review", billId: billIds[0], billIds, billCount: billIds.length, confidence: minConfidence };
   } catch (e) {
     return fail("failed", "error.unknown", (e as Error).message);
   }

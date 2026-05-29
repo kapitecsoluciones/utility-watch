@@ -159,6 +159,10 @@ export interface BillCandidate {
   id: string;
   statementDate?: string;
   sourceUrl?: string;
+  /** Sub-account / property identifier when one login covers many accounts. */
+  externalRef?: string;
+  /** Human label for the sub-account (e.g. a property name or address). */
+  label?: string;
 }
 
 export interface RawBillArtifact {
