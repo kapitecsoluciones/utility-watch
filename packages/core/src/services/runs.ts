@@ -5,6 +5,17 @@ export async function getRun(pool: Pool, id: number): Promise<RowDataPacket | nu
   return rows[0] ?? null;
 }
 
+export async function listRuns(pool: Pool, limit = 50): Promise<RowDataPacket[]> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT r.id, r.account_id, r.provider_id, r.adapter, r.status, r.error_code,
+            r.started_at, r.finished_at, a.display_name AS account
+       FROM runs r LEFT JOIN accounts a ON a.id = r.account_id
+      ORDER BY r.id DESC LIMIT ?`,
+    [limit],
+  );
+  return rows;
+}
+
 export interface RunDetail {
   run: RowDataPacket;
   artifacts: RowDataPacket[];
