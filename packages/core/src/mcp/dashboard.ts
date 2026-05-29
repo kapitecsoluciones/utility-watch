@@ -90,7 +90,9 @@ function renderApp(){
   app.appendChild(mk('<div class="flex min-h-screen"><aside class="w-60 shrink-0 border-r border-slate-200 p-4 flex flex-col"><div class="px-2 mb-5 flex items-center gap-2"><img src="/logo.png?v=2" width="26" height="26" class="rounded-md"><div><div class="head font-bold">Utility Watch</div><div class="text-[11px] text-slate-500">operator console</div></div></div><nav id="nav" class="space-y-1 flex-1"></nav><div class="border-t border-slate-200 pt-3 text-sm text-slate-500"><div class="px-2">Signed in as <b class="text-slate-900" id="who"></b></div><button class="btn-ghost mt-2 w-full" id="logoutBtn">Sign out</button></div></aside><main id="main" class="flex-1 p-7 overflow-auto"></main></div>'));
   document.getElementById('who').textContent = ME.name||'operator';
   const nav = document.getElementById('nav');
-  SECTIONS.forEach(s=>{ const b=mk('<button class="nav" data-sec="'+s[0]+'">'+s[1]+'</button>'); b.onclick=()=>show(s[0]); nav.appendChild(b); });
+  const CLIENT_SECS=['overview','properties','obligations','alerts','calendar','trends'];
+  const NAV = window.__CLIENT ? SECTIONS.filter(s=>CLIENT_SECS.indexOf(s[0])>=0) : SECTIONS;
+  NAV.forEach(s=>{ const b=mk('<button class="nav" data-sec="'+s[0]+'">'+s[1]+'</button>'); b.onclick=()=>show(s[0]); nav.appendChild(b); });
   document.getElementById('logoutBtn').onclick = async ()=>{ await fetch('/logout',{method:'POST'}); boot(); };
 }
 
