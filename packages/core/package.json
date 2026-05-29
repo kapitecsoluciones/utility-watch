@@ -18,7 +18,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
     "dev": "node --import tsx src/cli/index.ts",
-    "test": "node --import tsx --test src/config/config.test.ts src/auth/password.test.ts src/db/migrate.test.ts src/plugins/validate.test.ts src/plugins/loader.test.ts src/adapters/select.test.ts"
+    "test": "node --import tsx --test src/config/config.test.ts src/auth/password.test.ts src/db/migrate.test.ts src/plugins/validate.test.ts src/plugins/loader.test.ts src/plugins/declarative.test.ts src/adapters/select.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
