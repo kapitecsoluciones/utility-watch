@@ -18,7 +18,7 @@ const SHELL = `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Utility Watch — Console</title>
-<link rel="icon" href="/logo.png">
+<link rel="icon" href="/logo.png?v=2">
 <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -65,7 +65,7 @@ async function boot(){
 
 function renderLogin(){
   const app=document.getElementById('app'); app.replaceChildren();
-  app.appendChild(mk('<div class="flex items-center justify-center min-h-screen"><div class="card p-7" style="width:360px"><div class="flex items-center gap-2 mb-2"><img src="/logo.png" width="30" height="30" class="rounded-lg"><h1 class="text-2xl font-bold">Utility Watch<span style="color:#0891b2">.</span></h1></div><p class="text-slate-500 text-sm mt-1 mb-5">Operator console. Sign in to manage providers, accounts, bills, users, and reports.</p><input id="email" class="field w-full mb-2" type="email" placeholder="operator@email" autocomplete="username"><input id="password" class="field w-full mb-3" type="password" placeholder="password" autocomplete="current-password"><button class="btn w-full" id="loginBtn">Sign in</button><p id="loginErr" class="text-red-600 text-xs mt-2"></p></div></div>'));
+  app.appendChild(mk('<div class="flex items-center justify-center min-h-screen"><div class="card p-7" style="width:360px"><div class="flex items-center gap-2 mb-2"><img src="/logo.png?v=2" width="30" height="30" class="rounded-lg"><h1 class="text-2xl font-bold">Utility Watch<span style="color:#0891b2">.</span></h1></div><p class="text-slate-500 text-sm mt-1 mb-5">Operator console. Sign in to manage providers, accounts, bills, users, and reports.</p><input id="email" class="field w-full mb-2" type="email" placeholder="operator@email" autocomplete="username"><input id="password" class="field w-full mb-3" type="password" placeholder="password" autocomplete="current-password"><button class="btn w-full" id="loginBtn">Sign in</button><p id="loginErr" class="text-red-600 text-xs mt-2"></p></div></div>'));
   document.getElementById('loginBtn').onclick = async () => {
     try{ await api('/login','POST',{email:document.getElementById('email').value,password:document.getElementById('password').value}); boot(); }
     catch(e){ document.getElementById('loginErr').textContent = e.message; }
@@ -77,7 +77,7 @@ const SECTIONS = [['overview','Overview'],['providers','Providers'],['accounts',
 
 function renderApp(){
   const app=document.getElementById('app'); app.replaceChildren();
-  app.appendChild(mk('<div class="flex min-h-screen"><aside class="w-60 shrink-0 border-r border-slate-200 p-4 flex flex-col"><div class="px-2 mb-5 flex items-center gap-2"><img src="/logo.png" width="26" height="26" class="rounded-md"><div><div class="head font-bold">Utility Watch</div><div class="text-[11px] text-slate-500">operator console</div></div></div><nav id="nav" class="space-y-1 flex-1"></nav><div class="border-t border-slate-200 pt-3 text-sm text-slate-500"><div class="px-2">Signed in as <b class="text-slate-900" id="who"></b></div><button class="btn-ghost mt-2 w-full" id="logoutBtn">Sign out</button></div></aside><main id="main" class="flex-1 p-7 overflow-auto"></main></div>'));
+  app.appendChild(mk('<div class="flex min-h-screen"><aside class="w-60 shrink-0 border-r border-slate-200 p-4 flex flex-col"><div class="px-2 mb-5 flex items-center gap-2"><img src="/logo.png?v=2" width="26" height="26" class="rounded-md"><div><div class="head font-bold">Utility Watch</div><div class="text-[11px] text-slate-500">operator console</div></div></div><nav id="nav" class="space-y-1 flex-1"></nav><div class="border-t border-slate-200 pt-3 text-sm text-slate-500"><div class="px-2">Signed in as <b class="text-slate-900" id="who"></b></div><button class="btn-ghost mt-2 w-full" id="logoutBtn">Sign out</button></div></aside><main id="main" class="flex-1 p-7 overflow-auto"></main></div>'));
   document.getElementById('who').textContent = ME.name||'operator';
   const nav = document.getElementById('nav');
   SECTIONS.forEach(s=>{ const b=mk('<button class="nav" data-sec="'+s[0]+'">'+s[1]+'</button>'); b.onclick=()=>show(s[0]); nav.appendChild(b); });
