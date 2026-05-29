@@ -17,6 +17,14 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
   const transports = new Map<string, StreamableHTTPServerTransport>();
 
+  // DNS-rebinding / Origin protection for the public deployment. Set
+  // MCP_ALLOWED_HOSTS (and optionally MCP_ALLOWED_ORIGINS) to the public host,
+  // e.g. "utilitywatch.kapitec.pro". Protection is off only for local dev where
+  // neither is set.
+  const allowedHosts = (process.env.MCP_ALLOWED_HOSTS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const allowedOrigins = (process.env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const enableDnsRebindingProtection = allowedHosts.length > 0 || allowedOrigins.length > 0;
+
   const httpServer = createServer(async (req, res) => {
     try {
       if (req.method === "GET" && req.url === "/health") {
@@ -36,18 +44,23 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
       if (req.method === "POST") {
         const body = await readJson(req);
         if (!transport) {
-          transport = new StreamableHTTPServerTransport({
+          const server = buildMcpServer(deps);
+          const t = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
+            enableDnsRebindingProtection,
+            allowedHosts,
+            allowedOrigins,
             onsessioninitialized: (sid) => {
-              transports.set(sid, transport as StreamableHTTPServerTransport);
+              transports.set(sid, t);
             },
           });
-          transport.onclose = () => {
-            const sid = transport?.sessionId;
+          t.onclose = () => {
+            const sid = t.sessionId;
             if (sid) transports.delete(sid);
+            void server.close();
           };
-          const server = buildMcpServer(deps);
-          await server.connect(transport);
+          await server.connect(t);
+          transport = t;
         }
         await transport.handleRequest(req, res, body);
         return;
