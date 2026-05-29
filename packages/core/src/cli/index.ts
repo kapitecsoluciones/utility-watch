@@ -12,9 +12,12 @@ import { listBills, getBill } from "../services/bills.ts";
 import { reviewBill } from "../services/review.ts";
 import { exportBill } from "../services/exporter.ts";
 import { executeRun } from "../runner/index.ts";
+import { getRunDetail } from "../services/runs.ts";
+import { buildMcpServer, DEFAULT_AGENT_CAPABILITIES } from "../mcp/server.ts";
+import { startHttpServer } from "../mcp/http.ts";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { migrationsDir } from "../paths.ts";
 import { join } from "node:path";
-import type { RowDataPacket } from "mysql2/promise";
 import type { AppConfig } from "../config/index.ts";
 
 function parseFlags(args: string[]): Record<string, string | boolean> {
@@ -279,18 +282,16 @@ async function cmdRunsShow(args: string[]): Promise<number> {
   const config = loadConfigOrExit();
   const pool = createPool(config.db);
   try {
-    const [runs] = await pool.query<RowDataPacket[]>("SELECT * FROM runs WHERE id = ?", [id]);
-    const run = runs[0];
-    if (!run) {
+    const detail = await getRunDetail(pool, id);
+    if (!detail) {
       process.stderr.write(`run ${id} not found\n`);
       return 1;
     }
+    const { run, artifacts, logs } = detail;
     process.stdout.write(`Run #${run.id}  ${run.provider_id}  adapter=${run.adapter}  status=${run.status}\n`);
     if (run.error_code) process.stdout.write(`  error: ${run.error_code} — ${run.error_message}\n`);
-    const [artifacts] = await pool.query<RowDataPacket[]>("SELECT type, path, sha256 FROM artifacts WHERE run_id = ?", [id]);
     process.stdout.write(`  artifacts: ${artifacts.length}\n`);
     for (const a of artifacts) process.stdout.write(`    - ${a.type} ${a.path} (sha256 ${String(a.sha256).slice(0, 12)}…)\n`);
-    const [logs] = await pool.query<RowDataPacket[]>("SELECT level, event, message FROM run_logs WHERE run_id = ? ORDER BY id", [id]);
     process.stdout.write(`  log:\n`);
     for (const l of logs) process.stdout.write(`    [${l.level}] ${l.event}: ${l.message}\n`);
     return 0;
@@ -387,6 +388,32 @@ async function cmdBillsExport(args: string[]): Promise<number> {
   }
 }
 
+function agentCapabilities(): Set<string> {
+  const env = process.env.AGENT_CAPABILITIES;
+  const caps = env ? env.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_AGENT_CAPABILITIES;
+  return new Set(caps);
+}
+
+async function cmdMcpHttp(): Promise<number> {
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  const port = Number(process.env.MCP_PORT ?? "8080");
+  startHttpServer({ pool, config, capabilities: agentCapabilities() }, port);
+  process.stderr.write(`utility-watch MCP (Streamable HTTP) listening on :${port}/mcp\n`);
+  await new Promise<never>(() => {});
+  return 0;
+}
+
+async function cmdMcpStdio(): Promise<number> {
+  const config = loadConfigOrExit();
+  const pool = createPool(config.db);
+  const server = buildMcpServer({ pool, config, capabilities: agentCapabilities() });
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  await new Promise<never>(() => {});
+  return 0;
+}
+
 function help(): number {
   process.stdout.write(
     [
@@ -410,6 +437,8 @@ function help(): number {
       "  bills:show            Show a normalized bill (<bill-id>)",
       "  bills:review          Approve or reject a bill (--approve|--reject)",
       "  bills:export          Export an approved bill as JSON (<bill-id>)",
+      "  mcp                   Start the MCP server over Streamable HTTP (agent face)",
+      "  mcp:stdio             Start the MCP server over stdio (local agent)",
       "",
     ].join("\n"),
   );
@@ -451,6 +480,10 @@ async function main(): Promise<number> {
       return cmdBillsReview(rest, flags);
     case "bills:export":
       return cmdBillsExport(rest);
+    case "mcp":
+      return cmdMcpHttp();
+    case "mcp:stdio":
+      return cmdMcpStdio();
     case "setup:check":
       return cmdSetupCheck();
     case "setup":
