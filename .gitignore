@@ -22,3 +22,4 @@ tmp/
 *.sqlite
 *.sqlite3
 
+.gstack/
