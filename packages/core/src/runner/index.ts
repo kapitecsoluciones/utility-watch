@@ -59,6 +59,20 @@ export function resolveProviderDir(providerId: string, registryPackage?: string)
   return join(repoRoot, "plugins", providerId);
 }
 
+/** Coerce a provider-supplied date to ISO (YYYY-MM-DD) or null. Accepts ISO,
+ *  MM/DD/YYYY, and human forms like "June 12, 2026"; anything else → null so a
+ *  loose date never fails the whole run on the DATE column. */
+function toIsoDateOrNull(v: string | null): string | null {
+  if (!v) return null;
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) return `${mdy[3]}-${mdy[1]!.padStart(2, "0")}-${mdy[2]!.padStart(2, "0")}`;
+  const t = Date.parse(s);
+  if (!Number.isNaN(t)) return new Date(t).toISOString().slice(0, 10);
+  return null;
+}
+
 /** Decrypt a provider's declared secretRefs from the store into a name→value map. */
 async function loadSecretRefs(pool: Pool, secretsKey: string | undefined, refs: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
@@ -184,10 +198,10 @@ export async function executeRun(pool: Pool, opts: RunOptions): Promise<RunOutco
           account.id,
           account.provider_id,
           billAccountRef ?? null,
-          bill.statementDate,
-          bill.periodStart,
-          bill.periodEnd,
-          bill.dueDate,
+          toIsoDateOrNull(bill.statementDate),
+          toIsoDateOrNull(bill.periodStart),
+          toIsoDateOrNull(bill.periodEnd),
+          toIsoDateOrNull(bill.dueDate),
           bill.amountDue,
           bill.currency,
           JSON.stringify(bill),
@@ -300,7 +314,7 @@ export async function ingestArtifact(pool: Pool, opts: IngestOptions): Promise<R
          (run_id, account_id, provider_id, statement_date, period_start, period_end, due_date,
           amount_due, currency, normalized_json, confidence_score, source_url, primary_artifact_id, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'needs_review')`,
-      [runId, account.id, account.provider_id, bill.statementDate, bill.periodStart, bill.periodEnd, bill.dueDate, bill.amountDue, bill.currency, JSON.stringify(bill), bill.confidence, bill.sourceUrl, artifactId],
+      [runId, account.id, account.provider_id, toIsoDateOrNull(bill.statementDate), toIsoDateOrNull(bill.periodStart), toIsoDateOrNull(bill.periodEnd), toIsoDateOrNull(bill.dueDate), bill.amountDue, bill.currency, JSON.stringify(bill), bill.confidence, bill.sourceUrl, artifactId],
     );
     const billId = billRes.insertId;
     await pool.query("INSERT INTO reviews (bill_id, status) VALUES (?, 'pending')", [billId]);
