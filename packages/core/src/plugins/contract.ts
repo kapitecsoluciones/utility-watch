@@ -125,11 +125,23 @@ export interface ProviderLogger {
   error(msg: string, meta?: Record<string, unknown>): void;
 }
 
+export interface BrowserSession {
+  /** A playwright-core Page. Typed as unknown to keep the public contract dependency-free. */
+  page: unknown;
+  close(): Promise<void>;
+}
+
 export interface ProviderContext {
   logger: ProviderLogger;
   account: { ref: string; displayName: string };
   /** Resolve a declared secret handle to its value (local dev only). */
   getSecret(name: string): string | undefined;
+  /**
+   * Open an adapter-provided browser session. Present only when an execution
+   * adapter that provides a browser was selected (e.g. the Bright Data Scraping
+   * Browser). Plugins must not construct browsers directly.
+   */
+  openBrowser?(): Promise<BrowserSession>;
 }
 
 export interface StructuredError {

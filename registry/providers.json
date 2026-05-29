@@ -25,6 +25,30 @@
       "maintainer": "Utility Watch Maintainers"
     },
     {
+      "id": "sce-us",
+      "name": "Southern California Edison",
+      "country": "US",
+      "serviceTypes": ["electricity"],
+      "status": "draft",
+      "verification": "fixture-only",
+      "package": "plugins/sce-us",
+      "pluginVersion": "0.1.0",
+      "coreVersion": ">=0.1.0 <1.0.0",
+      "brightData": "supported",
+      "capabilities": [
+        "auth.login",
+        "accounts.list",
+        "bills.list",
+        "bills.download",
+        "bills.normalize"
+      ],
+      "knownLimitations": [
+        "Public repo ships the parser with synthetic fixtures only",
+        "Live retrieval requires credentials + the Bright Data Scraping Browser"
+      ],
+      "maintainer": "Utility Watch Maintainers"
+    },
+    {
       "id": "example-provider",
       "name": "Example Utility Provider",
       "country": "US",

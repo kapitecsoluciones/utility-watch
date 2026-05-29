@@ -1,0 +1,11 @@
+{
+  "name": "@utility-watch/provider-sce-us",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Southern California Edison (electricity) — real-pattern provider with synthetic fixtures.",
+  "scripts": {
+    "test:plugin": "node --import tsx --test src/parser.test.ts"
+  }
+}
