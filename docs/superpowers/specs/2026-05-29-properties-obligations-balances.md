@@ -12,7 +12,7 @@ made. The retrieval engine already produces `bills` tagged with
 organization layer on top so the console answers "what does each property owe
 right now, and what's the history".
 
-This mirrors a prior production dashboard (a prior `utilities/`) whose model is
+This mirrors a prior production dashboard whose model is
 property → obligation → payment_history, with computed status and alerts.
 
 ## Data model (new tables in core schema)
@@ -65,7 +65,7 @@ status, confidence)`; an obligation's **history** = all bills sharing its
 - **A** — schema (properties, obligations, payments) + obligation auto-upsert in runner +
   Properties view + Obligation-detail history view + current-balance rollups.
 - **B** — payments (add/mark-paid → decrement) + computed status + Alerts + filters/sort + CSV export.
-- **C** — one-time import (private private deployment): `ut_properties` → `properties`;
+- **C** — one-time import (private deployment): `ut_properties` → `properties`;
   `ut_obligations` → tag obligations to property by matching `provider_name`→provider_id and
   property heuristics; `ut_payment_history` → `payments`. Fuzzy where the old data lacks an
   account number; log unmatched rows for manual tagging.
@@ -73,4 +73,4 @@ status, confidence)`; an obligation's **history** = all bills sharing its
 ## Privacy
 
 Schema/service/UI are generic (public repo). The import script + any real property
-names/balances are private to a deployment (private overlay; never the public repo).
+names/balances live only in a private overlay; never in the public repo.

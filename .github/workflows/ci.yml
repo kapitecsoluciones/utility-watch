@@ -27,7 +27,14 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('registry/providers.json','utf8'))"
           for f in plugins/*/plugin.json; do node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"; done
       - name: No prohibited private terms
+        env:
+          PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
         run: |
-          ! grep -rinwE 'client|client|propertya|propertyb|a prior system' \
+          # Term list lives in the PRIVATE_TERMS repo secret (pipe-separated),
+          # so this guard never spells client/internal names in the public repo.
+          if [ -z "$PRIVATE_TERMS" ]; then
+            echo "PRIVATE_TERMS secret not set; skipping private-term scan"; exit 0
+          fi
+          ! grep -rinwE "$PRIVATE_TERMS" \
             --include='*.ts' --include='*.json' --include='*.md' --include='*.txt' \
             --exclude-dir=node_modules .
