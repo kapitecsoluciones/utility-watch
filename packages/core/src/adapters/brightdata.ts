@@ -1,4 +1,5 @@
 import type { BrowserSession, RawBillArtifact } from "../plugins/contract.ts";
+import { hostAllowed } from "./fetch.ts";
 
 const BRIGHTDATA_REQUEST_URL = "https://api.brightdata.com/request";
 const BD_TIMEOUT_MS = 60_000;
@@ -13,7 +14,7 @@ const BD_TIMEOUT_MS = 60_000;
  */
 export async function fetchViaBrightData(
   url: string,
-  opts: { apiKey: string; zone: string; country?: string },
+  opts: { apiKey: string; zone: string; country?: string; allowedHosts?: string[] },
 ): Promise<RawBillArtifact> {
   if (!opts.apiKey) throw new Error("Bright Data fetch selected but BRIGHTDATA_API_KEY is not set");
   let u: URL;
@@ -23,6 +24,11 @@ export async function fetchViaBrightData(
     throw new Error("invalid URL");
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("only http(s) URLs are allowed");
+  // Same provider network allowlist the direct-fetch path enforces, so the paid
+  // Bright Data proxy can't be pointed at an arbitrary host.
+  if (!hostAllowed(u.hostname, opts.allowedHosts ?? [])) {
+    throw new Error("URL host is not in the provider's declared network allowlist");
+  }
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), BD_TIMEOUT_MS);

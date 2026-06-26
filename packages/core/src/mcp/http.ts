@@ -73,6 +73,33 @@ function json(res: ServerResponse, code: number, obj: unknown): void {
   res.end(JSON.stringify(obj));
 }
 
+// Content-Security-Policy allows exactly what the server-rendered console + landing
+// load (Tailwind Play CDN needs 'unsafe-eval'; Chart.js via jsDelivr; Google Fonts).
+// Inline scripts/styles are 'unsafe-inline' because the SPA shell is inlined, but
+// script origins, framing, and object/base are locked down.
+const CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "img-src 'self' data:",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "connect-src 'self'",
+  "form-action 'self'",
+].join("; ");
+
+/** Baseline security headers set on every response. */
+function setSecurityHeaders(res: ServerResponse, secure: boolean): void {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Content-Security-Policy", CSP);
+  if (secure) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+}
+
 export interface Operator {
   id: number;
   name: string;
@@ -103,6 +130,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
 
   const httpServer = createServer(async (req, res) => {
     try {
+      setSecurityHeaders(res, secure);
       const url = req.url ?? "/";
       const path = url.split("?")[0] ?? "/";
 
@@ -167,7 +195,10 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
         return void res.end(JSON.stringify({ ok: true, name: user.name }));
       }
       if (req.method === "POST" && url === "/logout") {
-        res.writeHead(200, { "content-type": "application/json", "set-cookie": "uw_session=; HttpOnly; Path=/; Max-Age=0" });
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "set-cookie": ["uw_session=; HttpOnly; Path=/; Max-Age=0", "uw_csrf=; Path=/; Max-Age=0"],
+        });
         return void res.end(JSON.stringify({ ok: true }));
       }
       if (req.method === "GET" && url === "/api/me") {
@@ -204,7 +235,13 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
           if (path === "/api/export.csv") {
             const today = new Date().toISOString().slice(0, 10);
             const obs = await listObligations(deps.pool, {}, today);
-            const esc = (v: unknown) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+            const esc = (v: unknown) => {
+              let s = v == null ? "" : String(v);
+              // Neutralize spreadsheet formula injection, but don't mangle real
+              // numbers (e.g. a negative credit balance -100.50 stays numeric).
+              if (/^[=+\-@\t\r]/.test(s) && !Number.isFinite(Number(s))) s = "'" + s;
+              return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+            };
             const header = ["provider", "account_ref", "property", "category", "current_balance", "currency", "due_date", "status", "account_type", "payment_method"];
             const lines = [header.join(",")];
             for (const o of obs) lines.push([o.provider_id, o.account_ref, o.property_name, o.category_name, o.current_balance, o.currency, o.current_due_date, o.status, o.account_type, o.payment_method].map(esc).join(","));
@@ -450,6 +487,12 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
     }
   });
 
+  // Surface listen failures (e.g. EADDRINUSE) with a clear message instead of a
+  // bare unhandled 'error' event + stack trace.
+  httpServer.on("error", (err) => {
+    process.stderr.write(`[mcp-http] server error: ${(err as NodeJS.ErrnoException).code ?? ""} ${(err as Error).message}\n`);
+    process.exit(1);
+  });
   httpServer.listen(port, host);
   return httpServer;
 }

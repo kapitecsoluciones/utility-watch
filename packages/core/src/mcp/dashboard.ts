@@ -62,6 +62,9 @@ async function api(path, method, body){
   const mth=method||'GET'; if(mth!=='GET'&&mth!=='HEAD') h['x-csrf-token']=csrf();
   const r = await fetch(path,{method:mth,headers:h,body:body?JSON.stringify(body):undefined});
   let j={}; try{ j=await r.json(); }catch(_){}
+  // Session expired mid-use: send the operator back to the login screen instead
+  // of leaving a blank/red "operator login required" panel.
+  if(r.status===401 && path!=='/login'){ ME={authenticated:false,capabilities:[]}; renderLogin(); throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.'); }
   if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
   return j;
 }

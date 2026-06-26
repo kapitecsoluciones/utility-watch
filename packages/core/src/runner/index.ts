@@ -62,15 +62,21 @@ export function resolveProviderDir(providerId: string, registryPackage?: string)
 
 /** Coerce a provider-supplied date to ISO (YYYY-MM-DD) or null. Accepts ISO,
  *  MM/DD/YYYY, and human forms like "June 12, 2026"; anything else → null so a
- *  loose date never fails the whole run on the DATE column. */
-function toIsoDateOrNull(v: string | null): string | null {
+ *  loose date never fails the whole run on the DATE column.
+ *  Exported for unit testing. The loose `Date.parse` branch formats from LOCAL
+ *  calendar components (not `toISOString`) so a date-only value never shifts by
+ *  a day on servers whose timezone is ahead of UTC. */
+export function toIsoDateOrNull(v: string | null): string | null {
   if (!v) return null;
   const s = String(v).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (mdy) return `${mdy[3]}-${mdy[1]!.padStart(2, "0")}-${mdy[2]!.padStart(2, "0")}`;
   const t = Date.parse(s);
-  if (!Number.isNaN(t)) return new Date(t).toISOString().slice(0, 10);
+  if (!Number.isNaN(t)) {
+    const d = new Date(t);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
   return null;
 }
 
@@ -283,7 +289,7 @@ export async function ingestArtifact(pool: Pool, opts: IngestOptions): Promise<R
       artifact = { content: opts.content, contentType: opts.contentType ?? "text" };
     } else if (url) {
       artifact = useBrightData
-        ? await fetchViaBrightData(url, { apiKey: bd!.apiKey, zone: bd!.zone, country: bd!.country })
+        ? await fetchViaBrightData(url, { apiKey: bd!.apiKey, zone: bd!.zone, country: bd!.country, allowedHosts: manifest?.permissions?.network ?? [] })
         : await fetchArtifact(url, { allowedHosts: manifest?.permissions?.network ?? [] });
     } else {
       return fail("error.unknown", "ingest requires content or a url");

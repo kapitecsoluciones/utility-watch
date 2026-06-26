@@ -78,5 +78,22 @@ export async function runDoctor(config: AppConfig, pool: Pool): Promise<Check[]>
     checks.push({ name: "Bright Data", status: "ok", detail: "disabled (default)" });
   }
 
+  // Operability/security: surface unset secrets that otherwise fail silently.
+  checks.push(
+    process.env.SESSION_SECRET
+      ? { name: "session secret", status: "ok", detail: "SESSION_SECRET set (stable sessions)" }
+      : { name: "session secret", status: "warn", detail: "SESSION_SECRET unset — operator sessions reset on restart; set it for stable logins" },
+  );
+  checks.push(
+    config.secretsKey
+      ? { name: "encrypted secret store", status: "ok", detail: "SECRETS_KEY configured" }
+      : { name: "encrypted secret store", status: "warn", detail: "SECRETS_KEY unset — provider secret store disabled (falls back to SECRET_* env)" },
+  );
+  checks.push(
+    process.env.MCP_AUTH_TOKEN
+      ? { name: "agent token (MCP)", status: "ok", detail: "MCP_AUTH_TOKEN set (/mcp requires a bearer token)" }
+      : { name: "agent token (MCP)", status: "warn", detail: "MCP_AUTH_TOKEN unset — the /mcp endpoint is open" },
+  );
+
   return checks;
 }

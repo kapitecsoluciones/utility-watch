@@ -319,7 +319,8 @@ async function cmdRunAll(): Promise<number> {
       }
     }
     process.stdout.write(`\nruns:all done - ${ok} ok, ${fail} failed, ${bills} bill(s)\n`);
-    return 0;
+    // Non-zero exit when any account failed so cron/CI surfaces a bad batch.
+    return fail > 0 ? 1 : 0;
   } finally {
     await pool.end();
   }
@@ -341,8 +342,10 @@ async function cmdAccountsList(): Promise<number> {
 }
 
 async function cmdRun(flags: Record<string, string | boolean>): Promise<number> {
-  const accountId = Number(flags.account ?? 0);
-  if (!accountId) {
+  // `--account` with no value parses to boolean true; only accept a real number
+  // (otherwise `run --account` would silently target account #1).
+  const accountId = typeof flags.account === "string" ? Number(flags.account) : 0;
+  if (!Number.isInteger(accountId) || accountId <= 0) {
     process.stderr.write("Usage: utility-watch run --account <id>\n");
     return 2;
   }
