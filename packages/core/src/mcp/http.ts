@@ -119,6 +119,9 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
   const enableDnsRebindingProtection = allowedHosts.length > 0 || allowedOrigins.length > 0;
   const authToken = process.env.MCP_AUTH_TOKEN ?? "";
   const secure = allowedHosts.length > 0; // behind HTTPS in production
+  // When a trusted edge proxy already sets the security headers (CSP/HSTS/etc.),
+  // set TRUST_EDGE_HEADERS=true so the app doesn't emit duplicate/conflicting ones.
+  const trustEdgeHeaders = (process.env.TRUST_EDGE_HEADERS ?? "").toLowerCase() === "true";
 
   async function operatorFrom(req: IncomingMessage): Promise<Operator | null> {
     const id = verifySession(parseCookies(req.headers.cookie).uw_session);
@@ -130,7 +133,7 @@ export function startHttpServer(deps: McpDeps, port: number, host = "0.0.0.0") {
 
   const httpServer = createServer(async (req, res) => {
     try {
-      setSecurityHeaders(res, secure);
+      if (!trustEdgeHeaders) setSecurityHeaders(res, secure);
       const url = req.url ?? "/";
       const path = url.split("?")[0] ?? "/";
 
